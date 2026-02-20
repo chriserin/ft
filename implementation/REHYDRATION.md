@@ -65,7 +65,7 @@ If a scenario has no stored content (tracked before the `content` column was add
 
 ### Multiple scenarios rehydrated into a deleted file
 
-All scenarios belonging to the file that need rehydration are written at once. Scenarios are ordered by their original `line_number` to preserve the original file structure as closely as possible.
+All scenarios belonging to the file that need rehydration are written at once. Scenarios are ordered by their database ID to preserve the original registration order.
 
 ### Scenario rehydrated but file was renamed
 
@@ -74,5 +74,5 @@ If the file at the original `file_path` no longer exists but the `files` record 
 ## After Rehydration
 
 - The rehydrated file is a valid `.ft` file and will be re-parsed on the next `ft sync`
-- The re-parse will match scenarios by `@ft:` tag and update line numbers and content in the DB
+- The re-parse will match scenarios by `@ft:` tag and update content in the DB
 - Status history is unaffected — rehydration does not insert any status records

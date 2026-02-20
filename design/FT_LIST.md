@@ -29,7 +29,7 @@ ft list --no-activity
 
 ## Sort Order
 
-Default sort is by file path, then by line number within the file.
+Default sort is by file path, then by scenario ID.
 
 ## Deleted Files
 

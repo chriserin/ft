@@ -43,16 +43,16 @@ First implementation of `ft sync`. Scans for new `.ft` files and registers them.
 Extend `ft sync` to parse `.ft` files and extract scenarios.
 
 - Parse `Feature:` line
-- Parse `Scenario:` blocks — extract name, content, line number
+- Parse `Scenario:` blocks — extract name and content
 - Parse `Background:` blocks
 - Parse existing `@ft:` tags
 - Reject `Scenario Outline:`, `Rule:`, `Examples:` as syntax errors
-- Scenario content ends at first blank line
+- Scenario content ends at the next `Scenario:`, `Background:`, tag line preceding a `Scenario:`, or EOF — blank lines within scenarios are allowed
 - Write syntax errors as comments to the top of the file
 - For each scenario: insert `scenarios` record, write `@ft:<id>` tag to file
 
 **Schema migration**:
-- Create `scenarios` table (`id`, `file_id`, `name`, `line_number`, `created_at`, `updated_at`)
+- Create `scenarios` table (`id`, `file_id`, `name`, `created_at`, `updated_at`)
 
 **Testable**: place `.ft` files in `fts/`, run `ft sync`, verify scenarios extracted, `@ft:` tags written, and syntax errors handled.
 

@@ -194,7 +194,6 @@ type ParsedScenario struct {
     FtTag      string   // @ft:<id> if present
     OtherTags  []string // non-@ft tags
     Content    string   // raw gherkin text for DB storage / rehydration
-    LineNumber int      // line number of the Scenario: line
 }
 ```
 

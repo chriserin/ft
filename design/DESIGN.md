@@ -32,7 +32,6 @@ scenarios
   file_id       INTEGER REFERENCES files(id)
   name          TEXT            -- parsed from "Scenario:" line
   content       TEXT            -- full gherkin content of the scenario, kept in sync on each parse
-  line_number   INTEGER         -- location within the .ft file
   created_at    TIMESTAMP
   updated_at    TIMESTAMP
 

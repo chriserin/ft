@@ -4,6 +4,7 @@ Feature: Phase 2 Register New Files
   Background:
     Given the user has run `ft init`
 
+  @ft:9
   Scenario: Register a new .ft file
     Given the file fts/login.ft exists
     And   login.ft is not tracked in the database
@@ -11,6 +12,7 @@ Feature: Phase 2 Register New Files
     Then  a files record is created for fts/login.ft
     And   the output contains "new  fts/login.ft"
 
+  @ft:10
   Scenario: Register multiple .ft files
     Given the file fts/login.ft exists
     And   the file fts/checkout.ft exists
@@ -21,6 +23,7 @@ Feature: Phase 2 Register New Files
     And   the output contains "new  fts/login.ft"
     And   the output contains "new  fts/checkout.ft"
 
+  @ft:11
   Scenario: Show already-tracked file
     Given the file fts/login.ft exists
     And   login.ft is already tracked in the database
@@ -28,23 +31,27 @@ Feature: Phase 2 Register New Files
     Then  no new files record is created
     And   the output contains "trk  fts/login.ft"
 
+  @ft:12
   Scenario: No .ft files in fts/
     Given no .ft files exist in fts/
     When  the user runs `ft sync`
     Then  no files records are created
     And   the output contains "synced 0 files"
 
+  @ft:13
   Scenario: Files record stores file path
     Given the file fts/login.ft exists
     When  the user runs `ft sync`
     Then  the files record for login.ft has file_path "fts/login.ft"
 
+  @ft:14
   Scenario: Files record stores timestamps
     Given the file fts/login.ft exists
     When  the user runs `ft sync`
     Then  the files record for login.ft has a created_at timestamp
     And   the files record for login.ft has an updated_at timestamp
 
+  @ft:15
   Scenario: Non-.ft files are ignored
     Given the file fts/notes.txt exists
     And   the file fts/login.ft exists
@@ -52,6 +59,7 @@ Feature: Phase 2 Register New Files
     Then  a files record is created for fts/login.ft
     And   no files record is created for fts/notes.txt
 
+  @ft:16
   Scenario: Sync is idempotent
     Given the file fts/login.ft exists
     When  the user runs `ft sync`
@@ -59,11 +67,13 @@ Feature: Phase 2 Register New Files
     Then  there is exactly one files record for fts/login.ft
     And   the output contains "trk  fts/login.ft"
 
+  @ft:17
   Scenario: Summary line always appears
     Given the file fts/login.ft exists
     When  the user runs `ft sync`
     Then  the output contains "synced 1 files"
 
+  @ft:18
   Scenario: Sync without init
     Given the user has not run `ft init`
     And   the fts/ directory does not exist
@@ -71,6 +81,7 @@ Feature: Phase 2 Register New Files
     Then  the exit status is 1
     And   the output contains "run `ft init` first"
 
+  @ft:19
   Scenario: Files table migration
     When  the user runs `ft init`
     Then  the files table exists in the database

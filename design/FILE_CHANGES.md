@@ -24,7 +24,7 @@ An existing tracked `.ft` file is changed on disk.
 
 1. Re-parse the file to extract all `Scenario:` blocks and their `@ft:` tags
 2. Match scenarios between file and DB by `@ft:<id>` tag
-   - **Tagged scenario found in DB** — update name, content, line number, and `updated_at` timestamp. Status history is retained
+   - **Tagged scenario found in DB** — update name, content, and `updated_at` timestamp. Status history is retained
    - **Tagged scenario with unknown ID** — fall back to matching by scenario name within the same file. If a name match is found, re-associate and write the correct `@ft:<id>` tag. If no name match, treat as a new scenario.
    - **Untagged scenario** — fall back to matching by scenario name within the same file. If a name match is found, re-associate and write the `@ft:<id>` tag. If no name match, new scenario; insert a `scenarios` record (with content), write `@ft:<id>` tag to the file
    - **Tag in DB but not in file** — scenario was removed:

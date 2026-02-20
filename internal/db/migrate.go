@@ -13,6 +13,13 @@ var All = []string{
 		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 		updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
 	)`,
+	`CREATE TABLE scenarios (
+		id         INTEGER PRIMARY KEY,
+		file_id    INTEGER NOT NULL REFERENCES files(id),
+		name       TEXT NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	)`,
 }
 
 func Migrate(db *sql.DB) error {

@@ -5,7 +5,7 @@ Display a single scenario by its `@ft:<id>`.
 ## Output Format
 
 ```
-@ft:42  login.ft  line 5
+@ft:42  login.ft
 Status: accepted
 
 History:
@@ -22,7 +22,7 @@ Scenario: User logs in
 ```
 
 Sections:
-- **Header** — scenario ID, file name, line number
+- **Header** — scenario ID, file name
 - **Status** — current status (most recent from `statuses` table), or `no-activity` if none
 - **History** — all status records, most recent first, with timestamps
 - **Tests** — linked test files and line numbers

@@ -34,10 +34,10 @@ synced 0 files
 
 ```
   new  fts/login.ft
-       + User logs in (@ft:1)
-       + User fails login (@ft:2)
+       + @ft:1 User logs in
+       + @ft:2 User fails login
   new  fts/checkout.ft
-       + User completes purchase (@ft:3)
+       + @ft:3 User completes purchase
   trk  fts/signup.ft
 
 synced 3 files, 5 scenarios
@@ -55,31 +55,32 @@ synced 3 files, 5 scenarios
 
 ```
   new  fts/signup.ft
-       + User signs up (@ft:6)
+       + @ft:6 User signs up
   mod  fts/login.ft
-       ~ User logs in (@ft:1)
-       + Password reset (@ft:7)
+       ~ @ft:1 User logs in
+       + @ft:7 Password reset
   trk  fts/checkout.ft
   del  fts/old.ft
-       - Legacy flow (@ft:4) removed
+       - @ft:4 Legacy flow removed
 
 synced 4 files, 8 scenarios
 ```
 
 ### Markers
 
-| Marker | Meaning                                          | Color        |
-|--------|--------------------------------------------------|--------------|
-| `new`  | new file registered                               | green (2)    |
-| `trk`  | already tracked, no changes                       | dim (2;2)    |
-| `mod`  | existing file changed                             | yellow (3)   |
-| `del`  | tracked file missing from disk                    | red (1)      |
+| Marker | Meaning                                          | Color          |
+|--------|--------------------------------------------------|----------------|
+| `new`  | new file registered                               | green (2)      |
+| `trk`  | already tracked, no changes                       | dim (2;2)      |
+| `mod`  | existing file changed                             | yellow (3)     |
+| `del`  | tracked file missing from disk                    | red (1)        |
 | `err`  | file has syntax errors                            | bright red (9) |
-| `+`    | new scenario                                      | green (2)    |
-| `~`    | updated scenario (name, content, or line changed) | yellow (3)   |
-| `-`    | removed scenario                                  | red (1)      |
+| `+`    | new scenario                                      | green (2)      |
+| `~`    | updated scenario (name or content changed)        | yellow (3)     |
+| `-`    | removed scenario                                  | red (1)        |
+| `@ft:` | scenario ID                                       | gray (8)       |
 
-The color applies to the entire line — marker, filename, and scenario name. The summary line is uncolored.
+The color applies to the marker only. The `@ft:` ID is always gray. The summary line is uncolored.
 
 ## Behavior by Phase
 
@@ -112,7 +113,7 @@ Full reconciliation replaces the simple "skip already-tracked" logic:
 1. Re-parse every tracked `.ft` file
 2. Match scenarios between file and DB using `@ft:<id>` tags
 3. Handle each case:
-   - **Tagged, in DB** — update name, content, line number, `updated_at`
+   - **Tagged, in DB** — update name, content, `updated_at`
    - **Tagged, unknown ID** — fall back to name matching within the file. If matched, re-associate and fix the tag. If not, treat as new.
    - **Untagged** — fall back to name matching. If matched, write the `@ft:<id>` tag. If not, insert new scenario.
    - **In DB, not in file** — scenario was removed:

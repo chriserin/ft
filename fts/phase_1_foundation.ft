@@ -4,12 +4,14 @@ Feature: Phase 1 Foundation
   Background:
     Given the user is in a project directory
 
+  @ft:1
   Scenario: Create fts directory
     Given the fts/ directory does not exist
     When  the user runs `ft init`
     Then  the fts/ directory is created
     And   the output contains "fts/ created"
 
+  @ft:2
   Scenario: fts directory already exists
     Given the fts/ directory already exists
     When  the user runs `ft init`
@@ -17,6 +19,7 @@ Feature: Phase 1 Foundation
     And   the existing fts/ directory is unchanged
     And   the output contains "fts/ already exists"
 
+  @ft:3
   Scenario: Initialize SQLite database
     Given the fts/ directory exists
     And   fts/ft.db does not exist
@@ -25,6 +28,7 @@ Feature: Phase 1 Foundation
     And   the database uses WAL mode
     And   the output contains "fts/ft.db created"
 
+  @ft:4
   Scenario: Database already exists
     Given fts/ft.db already exists
     When  the user runs `ft init`
@@ -32,11 +36,13 @@ Feature: Phase 1 Foundation
     And   the existing database is unchanged
     And   the output contains "fts/ft.db already exists"
 
+  @ft:5
   Scenario: Add migration system
     When  the user runs `ft init`
     Then  the schema_version table exists in the database
     And   the schema version is 0
 
+  @ft:6
   Scenario: Add ft.db to gitignore
     Given a .gitignore file exists
     And   fts/ft.db is not listed in .gitignore
@@ -44,6 +50,7 @@ Feature: Phase 1 Foundation
     Then  fts/ft.db is added to .gitignore
     And   the output contains "fts/ft.db added to .gitignore"
 
+  @ft:7
   Scenario: ft.db already in gitignore
     Given a .gitignore file exists
     And   fts/ft.db is already listed in .gitignore
@@ -51,6 +58,7 @@ Feature: Phase 1 Foundation
     Then  .gitignore is unchanged
     And   the output contains "fts/ft.db already in .gitignore"
 
+  @ft:8
   Scenario: No gitignore exists
     Given no .gitignore file exists
     When  the user runs `ft init`

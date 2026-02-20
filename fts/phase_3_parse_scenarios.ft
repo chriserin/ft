@@ -1,0 +1,179 @@
+Feature: Phase 3 Parse Scenarios
+  `ft sync` parses .ft files, extracts scenarios, registers them in the database,
+  and writes @ft:<id> tags back to the file.
+
+  Background:
+    Given the user has run `ft init`
+
+  @ft:20
+  Scenario: Register a new scenario
+    Given the file fts/login.ft contains a Scenario "User logs in"
+    When  the user runs `ft sync`
+    Then  a scenarios record is created with name "User logs in"
+    And   the output contains "+ @ft:1 User logs in"
+    And   the file name line appears above the scenario line in the output
+
+  @ft:21
+  Scenario: Register multiple scenarios from one file
+    Given the file fts/login.ft contains:
+      """
+      Feature: Login
+        Scenario: User logs in
+          Given a user
+          When  they log in
+          Then  they see the dashboard
+
+        Scenario: User fails login
+          Given a user
+          When  they enter a wrong password
+          Then  they see an error
+      """
+    When  the user runs `ft sync`
+    Then  a scenarios record is created with name "User logs in"
+    And   a scenarios record is created with name "User fails login"
+
+  @ft:22
+  Scenario: Write @ft tag to file
+    Given the file fts/login.ft contains a Scenario "User logs in"
+    When  the user runs `ft sync`
+    Then  fts/login.ft contains "@ft:1"
+    And   the @ft tag is on the line immediately above "Scenario: User logs in"
+
+  @ft:23
+  Scenario: Already-tagged scenario is skipped
+    Given the file fts/login.ft contains:
+      """
+      Feature: Login
+        @ft:1
+        Scenario: User logs in
+          Given a user
+      """
+    And   a scenarios record exists with id 1 and name "User logs in"
+    When  the user runs `ft sync`
+    Then  no new scenarios record is created
+    And   there is exactly one scenarios record
+
+  @ft:24
+  Scenario: Scenario record stores name, file association, and timestamps
+    Given the file fts/login.ft contains a Scenario "User logs in"
+    When  the user runs `ft sync`
+    Then  the scenarios record has name "User logs in"
+    And   the scenarios record has a file_id matching the files record for fts/login.ft
+    And   the scenarios record has a created_at timestamp
+    And   the scenarios record has an updated_at timestamp
+
+  @ft:25
+  Scenario: New scenario output marker
+    Given the file fts/login.ft contains a Scenario "User logs in"
+    When  the user runs `ft sync`
+    Then  the output contains "+ @ft:1 User logs in"
+
+  @ft:26
+  Scenario: Scenarios from multiple files
+    Given the file fts/login.ft contains a Scenario "User logs in"
+    And   the file fts/checkout.ft contains a Scenario "User completes purchase"
+    When  the user runs `ft sync`
+    Then  a scenarios record is created with name "User logs in"
+    And   a scenarios record is created with name "User completes purchase"
+
+  @ft:27
+  Scenario: Reject Scenario Outline
+    Given the file fts/login.ft contains a "Scenario Outline:" block
+    When  the user runs `ft sync`
+    Then  the output contains "err  fts/login.ft"
+    And   the output contains "Scenario Outline is not supported"
+
+  @ft:28
+  Scenario: Reject Rule keyword
+    Given the file fts/login.ft contains a "Rule:" block
+    When  the user runs `ft sync`
+    Then  the output contains "err  fts/login.ft"
+    And   the output contains "Rule is not supported"
+
+  @ft:29
+  Scenario: Reject Examples keyword
+    Given the file fts/login.ft contains an "Examples:" block
+    When  the user runs `ft sync`
+    Then  the output contains "err  fts/login.ft"
+    And   the output contains "Examples is not supported"
+
+  @ft:30
+  Scenario: Error comment written to top of file
+    Given the file fts/login.ft contains a "Scenario Outline:" block on line 5
+    When  the user runs `ft sync`
+    Then  the first line of fts/login.ft starts with \"# ft error:\"
+    And   the error comment includes the line number
+
+  @ft:31
+  Scenario: File with error is skipped
+    Given the file fts/login.ft contains a "Scenario Outline:" block
+    And   the file also contains a valid Scenario "User logs in"
+    When  the user runs `ft sync`
+    Then  no scenarios record is created for fts/login.ft
+
+  @ft:32
+  Scenario: Summary includes scenario count
+    Given the file fts/login.ft contains two scenarios
+    When  the user runs `ft sync`
+    Then  the output contains "synced 1 files, 2 scenarios"
+
+  @ft:33
+  Scenario: Parse is idempotent
+    Given the file fts/login.ft contains a Scenario "User logs in"
+    And   the user has already run `ft sync`
+    When  the user runs `ft sync` again
+    Then  there is exactly one scenarios record with name "User logs in"
+    And   the file contains exactly one @ft tag
+
+  @ft:34
+  Scenario: Background block is recognized
+    Given the file fts/login.ft contains:
+      """
+      Feature: Login
+        Background:
+          Given a registered user
+
+        Scenario: User logs in
+          When  they log in
+          Then  they see the dashboard
+      """
+    When  the user runs `ft sync`
+    Then  a scenarios record is created with name "User logs in"
+    And   no scenarios record is created with name "Background"
+
+  @ft:35
+  Scenario: Tagged scenario without DB record is re-registered
+    Given the file fts/login.ft is already tracked in the files table
+    And   the file fts/login.ft contains:
+      """
+      Feature: Login
+        @ft:5
+        Scenario: User logs in
+          Given a user
+      """
+    And   no scenarios record exists with id 5
+    When  the user runs `ft sync`
+    Then  a scenarios record is created with id 5 and name "User logs in"
+    And   the output contains "User logs in"
+
+  @ft:36
+  Scenario: New file strips stale tags and assigns new IDs
+    Given the file fts/login.ft is NOT in the files table
+    And   the file fts/login.ft contains:
+      """
+      Feature: Login
+        @ft:99
+        Scenario: User logs in
+          Given a user
+      """
+    When  the user runs `ft sync`
+    Then  the stale @ft:99 tag is stripped from the file
+    And   a scenarios record is created with a fresh id and name "User logs in"
+    And   fts/login.ft contains the new @ft tag, not @ft:99
+
+  @ft:37
+  Scenario: Scenarios table migration
+    When  the user runs `ft init`
+    Then  the scenarios table exists in the database
+    And   the schema version is 2
+
