@@ -1,0 +1,68 @@
+Feature: Phase 4 ft list
+  `ft list` displays all tracked scenarios as a flat list with ID, file, name,
+  and current status.
+
+  Background:
+    Given the user has run `ft init`
+
+  @ft:38
+  Scenario: List a single scenario
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft list`
+    Then  the output contains "@ft:1"
+    And   the output contains "login.ft"
+    And   the output contains "User logs in"
+
+  @ft:39
+  Scenario: List multiple scenarios from one file
+    Given fts/login.ft has been synced with scenarios "User logs in" and "User fails login"
+    When  the user runs `ft list`
+    Then  the output contains "User logs in"
+    And   the output contains "User fails login"
+
+  @ft:40
+  Scenario: List scenarios from multiple files
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   fts/checkout.ft has been synced with Scenario "User completes purchase"
+    When  the user runs `ft list`
+    Then  the output contains "login.ft"
+    And   the output contains "checkout.ft"
+
+  @ft:41
+  Scenario: Scenarios sorted by file path then scenario ID
+    Given fts/checkout.ft has been synced with Scenario "User completes purchase"
+    And   fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft list`
+    Then  "checkout.ft" appears before "login.ft" in the output
+
+  @ft:42
+  Scenario: Scenario with no status shows no-activity
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   no status has been set for the scenario
+    When  the user runs `ft list`
+    Then  the output contains "no-activity"
+
+  @ft:43
+  Scenario: List shows nothing when no scenarios exist
+    When  the user runs `ft list`
+    Then  the output is empty or contains only a header
+
+  @ft:44
+  Scenario: Output columns are aligned
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   fts/checkout.ft has been synced with Scenario "User completes purchase"
+    When  the user runs `ft list`
+    Then  the columns are visually aligned across rows
+
+  @ft:45
+  Scenario: File name shows basename without fts/ prefix
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft list`
+    Then  the output contains "login.ft"
+    And   the output does not contain "fts/login.ft"
+
+  @ft:46
+  Scenario: List requires init
+    Given the user has not run `ft init`
+    When  the user runs `ft list`
+    Then  the command fails with "run `ft init` first"
