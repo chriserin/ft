@@ -1,0 +1,110 @@
+Feature: Phase 5 ft show
+  `ft show` displays a single scenario by its @ft:<id>, including the header
+  and the full Gherkin content read from the .ft file on disk. Status history
+  and test links are not yet available (Phase 6 and Phase 8).
+
+  Background:
+    Given the user has run `ft init`
+
+  @ft:47
+  Scenario: Show a single scenario
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft show 1`
+    Then  the output contains "@ft:1"
+    And   the output contains "login.ft"
+    And   the output contains "Scenario: User logs in"
+
+  @ft:48
+  Scenario: Show displays Gherkin content from file
+    Given fts/login.ft contains:
+      """
+      Feature: Login
+        Scenario: User logs in
+          Given the user is on the login page
+          When  the user enters valid credentials
+          Then  the user sees the dashboard
+      """
+    And   the file has been synced
+    When  the user runs `ft show 1`
+    Then  the output contains "Given the user is on the login page"
+    And   the output contains "When  the user enters valid credentials"
+    And   the output contains "Then  the user sees the dashboard"
+
+  @ft:49
+  Scenario: Show displays no-activity when no status exists
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   no status has been set for the scenario
+    When  the user runs `ft show 1`
+    Then  the output contains "no-activity"
+
+  @ft:50
+  Scenario: Show unknown ID returns error
+    Given no scenario exists with id 999
+    When  the user runs `ft show 999`
+    Then  the command fails with an error message
+    And   the error contains "999"
+
+  @ft:51
+  Scenario: Show accepts @ft: prefix
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft show @ft:1`
+    Then  the output contains "@ft:1"
+    And   the output contains "User logs in"
+
+  @ft:52
+  Scenario: Show file name is basename without fts/ prefix
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft show 1`
+    Then  the output contains "login.ft"
+    And   the output does not contain "fts/login.ft"
+
+  @ft:53
+  Scenario: Show requires init
+    Given the user has not run `ft init`
+    When  the user runs `ft show 1`
+    Then  the command fails with "run `ft init` first"
+
+  @ft:54
+  Scenario: Show with no argument returns error
+    When  the user runs `ft show`
+    Then  the command fails with an error about missing argument
+
+  @ft:55
+  Scenario: Show content from multi-scenario file
+    Given fts/login.ft contains:
+      """
+      Feature: Login
+        Scenario: User logs in
+          Given a user
+          When  they log in
+          Then  they see the dashboard
+
+        Scenario: User fails login
+          Given a user
+          When  they enter a wrong password
+          Then  they see an error
+      """
+    And   the file has been synced
+    When  the user runs `ft show 1`
+    Then  the output contains "Scenario: User logs in"
+    And   the output contains "Given a user"
+    And   the output does not contain "User fails login"
+
+  @ft:56
+  Scenario: Show includes Background section
+    Given fts/login.ft contains:
+      """
+      Feature: Login
+        Background:
+          Given a registered user
+
+        Scenario: User logs in
+          When  they log in
+          Then  they see the dashboard
+      """
+    And   the file has been synced
+    When  the user runs `ft show 1`
+    Then  the output contains "Background:"
+    And   the output contains "Given a registered user"
+    And   the output contains "Scenario: User logs in"
+    And   the Background section appears before the Scenario section
