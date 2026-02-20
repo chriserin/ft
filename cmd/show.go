@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chriserin/ft/internal/db"
 	"github.com/chriserin/ft/internal/parser"
@@ -85,9 +86,39 @@ func RunShow(w io.Writer, rawID string) error {
 	// Extract Background content from raw file lines
 	background := extractBackground(string(content))
 
+	// Query current status
+	currentStatus := "no-activity"
+	var statusStr string
+	err = sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = ? ORDER BY changed_at DESC, id DESC LIMIT 1`, id).Scan(&statusStr)
+	if err == nil {
+		currentStatus = statusStr
+	}
+
+	// Query history
+	histRows, err := sqlDB.Query(`SELECT status, changed_at FROM statuses WHERE scenario_id = ? ORDER BY changed_at DESC, id DESC`, id)
+	if err != nil {
+		return fmt.Errorf("querying status history: %w", err)
+	}
+	defer histRows.Close()
+
+	var history []ui.HistoryEntry
+	for histRows.Next() {
+		var s string
+		var changedAt time.Time
+		if err := histRows.Scan(&s, &changedAt); err != nil {
+			return fmt.Errorf("scanning history row: %w", err)
+		}
+		history = append(history, ui.HistoryEntry{Status: s, ChangedAt: changedAt})
+	}
+
 	// Print header and status
 	ui.ShowHeader(w, scenarioID, fileName)
-	ui.ShowStatus(w, "no-activity")
+	ui.ShowStatus(w, currentStatus)
+
+	// Print history if present
+	if len(history) > 0 {
+		ui.ShowHistory(w, history)
+	}
 
 	// Print Background if present
 	if background != "" {

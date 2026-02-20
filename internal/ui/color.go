@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -105,6 +106,37 @@ func ShowGherkin(w io.Writer, content string) {
 			continue
 		}
 		fmt.Fprintln(w, line)
+	}
+}
+
+type HistoryEntry struct {
+	Status    string
+	ChangedAt time.Time
+}
+
+func StatusConfirm(w io.Writer, id int64, prevStatus, status string) {
+	tag := idStyle.Render(fmt.Sprintf("@ft:%d", id))
+	if prevStatus == "" {
+		fmt.Fprintf(w, "%s → %s\n", tag, status)
+	} else {
+		fmt.Fprintf(w, "%s %s → %s\n", tag, prevStatus, status)
+	}
+}
+
+func ShowHistory(w io.Writer, entries []HistoryEntry) {
+	// Compute max status width for alignment
+	maxWidth := 0
+	for _, e := range entries {
+		if len(e.Status) > maxWidth {
+			maxWidth = len(e.Status)
+		}
+	}
+
+	fmt.Fprintln(w, "History:")
+	for _, e := range entries {
+		ts := e.ChangedAt.Format("Jan 2, 2006 3:04pm")
+		padded := fmt.Sprintf("%-*s", maxWidth, e.Status)
+		fmt.Fprintf(w, "  %s  %s\n", trkStyle.Render(padded), trkStyle.Render(ts))
 	}
 }
 

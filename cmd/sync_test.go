@@ -184,7 +184,7 @@ func TestSync_FilesTableMigration(t *testing.T) {
 
 	var version int
 	require.NoError(t, sqlDB.QueryRow(`SELECT version FROM schema_version`).Scan(&version))
-	assert.Equal(t, 2, version)
+	assert.Equal(t, 3, version)
 }
 
 // Phase 3 tests
@@ -610,5 +610,5 @@ func TestSync_ScenariosTableMigration(t *testing.T) {
 
 	var version int
 	require.NoError(t, sqlDB.QueryRow(`SELECT version FROM schema_version`).Scan(&version))
-	assert.Equal(t, 2, version)
+	assert.Equal(t, 3, version)
 }

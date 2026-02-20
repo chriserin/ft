@@ -20,6 +20,12 @@ var All = []string{
 		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 		updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
 	)`,
+	`CREATE TABLE statuses (
+		id          INTEGER PRIMARY KEY,
+		scenario_id INTEGER NOT NULL REFERENCES scenarios(id),
+		status      TEXT NOT NULL,
+		changed_at  DATETIME NOT NULL DEFAULT (datetime('now'))
+	)`,
 }
 
 func Migrate(db *sql.DB) error {

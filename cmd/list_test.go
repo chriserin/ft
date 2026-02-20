@@ -13,7 +13,7 @@ import (
 func runList(t *testing.T) string {
 	t.Helper()
 	var buf bytes.Buffer
-	require.NoError(t, RunList(&buf))
+	require.NoError(t, RunList(&buf, "", false))
 	return buf.String()
 }
 
@@ -163,7 +163,7 @@ func TestList_RequiresInit(t *testing.T) {
 	inTempDir(t)
 
 	var buf bytes.Buffer
-	err := RunList(&buf)
+	err := RunList(&buf, "", false)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "run `ft init` first")

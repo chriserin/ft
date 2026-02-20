@@ -9,7 +9,7 @@ Display a single scenario by its `@ft:<id>`.
 Status: accepted
 
 History:
-  accepted     2026-02-15 10:30
+  accepted     Feb 15, 2026 10:30am
 
 Tests:
   tests/test_login.py:14
@@ -27,7 +27,7 @@ Scenario: User logs in
 Sections:
 - **Header** — scenario ID, file name
 - **Status** — current status (most recent from `statuses` table), or `no-activity` if none
-- **History** — all status records, most recent first, with timestamps
+- **History** — all status records, most recent first, with human-readable timestamps (`Jan 2, 2026 3:04pm`)
 - **Tests** — linked test files and line numbers
 - **Content** — the full gherkin content read from the `.ft` file on disk. If the file has a `Background:` section, it is shown before the scenario content to provide full context. If no Background exists, the content starts with the `Scenario:` line.
 

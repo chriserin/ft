@@ -1,0 +1,195 @@
+Feature: Phase 6 ft status
+  `ft status` provides scenario status management and project reporting.
+  Without arguments it displays a high-level project report (scenario counts
+  grouped by status). With `<id> <status>` it sets a scenario's status.
+  This phase also updates `ft show` to display status history and `ft list`
+  to show current status from the database and support filtering.
+
+  Background:
+    Given the user has run `ft init`
+
+  @ft:57
+  Scenario: Set a scenario status
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft status 1 accepted`
+    Then  a new status record is inserted for scenario 1 with status "accepted"
+
+  @ft:58
+  Scenario: Status accepts @ft: prefix
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft status @ft:1 in-progress`
+    Then  a new status record is inserted for scenario 1 with status "in-progress"
+
+  @ft:59
+  Scenario: Status accepts any text as status
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft status 1 my-custom-status`
+    Then  a new status record is inserted for scenario 1 with status "my-custom-status"
+
+  @ft:60
+  Scenario: Status for unknown ID returns error
+    Given no scenario exists with id 999
+    When  the user runs `ft status 999 accepted`
+    Then  the command fails with an error containing "999"
+
+  @ft:61
+  Scenario: Multiple status changes create history
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft status 1 accepted`
+    And   the user runs `ft status 1 in-progress`
+    Then  there are two status records for scenario 1
+    And   the most recent status is "in-progress"
+
+  @ft:62
+  Scenario: Project report with no scenarios
+    When  the user runs `ft status`
+    Then  the output contains "Scenarios: 0"
+
+  @ft:63
+  Scenario: Project report counts scenarios by status
+    Given fts/login.ft has been synced with scenarios "User logs in" and "User fails login"
+    And   fts/checkout.ft has been synced with Scenario "User completes purchase"
+    And   the user has set scenario 1 to "accepted"
+    And   the user has set scenario 2 to "in-progress"
+    When  the user runs `ft status`
+    Then  the output contains "Scenarios: 3"
+    And   the output contains "accepted" with count 1
+    And   the output contains "in-progress" with count 1
+    And   the output contains "no-activity" with count 1
+
+  @ft:64
+  Scenario: Project report shows no-activity last
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   no status has been set for the scenario
+    When  the user runs `ft status`
+    Then  "no-activity" appears last in the status list
+
+  @ft:65
+  Scenario: Project report orders statuses by count descending
+    Given several scenarios with varying statuses
+    When  the user runs `ft status`
+    Then  statuses are listed in order of count, most common first
+    And   "no-activity" appears last regardless of count
+
+  @ft:66
+  Scenario: Status requires init
+    Given the user has not run `ft init`
+    When  the user runs `ft status 1 accepted`
+    Then  the command fails with "run `ft init` first"
+
+  @ft:67
+  Scenario: Status with no arguments and no id returns report
+    When  the user runs `ft status`
+    Then  the output contains "Scenarios:"
+    And   no error is returned
+
+  @ft:68
+  Scenario: Show displays current status from database
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    When  the user runs `ft show 1`
+    Then  the output contains "Status: accepted"
+    And   the output does not contain "no-activity"
+
+  @ft:69
+  Scenario: Show displays status history
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    And   the user has set scenario 1 to "in-progress"
+    When  the user runs `ft show 1`
+    Then  the output contains "History:"
+    And   "in-progress" appears before "accepted" in the history
+    And   each history entry has a timestamp
+
+  @ft:70
+  Scenario: Show with no status still shows no-activity
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   no status has been set for the scenario
+    When  the user runs `ft show 1`
+    Then  the output contains "Status: no-activity"
+    And   the output does not contain "History:"
+
+  @ft:71
+  Scenario: List shows current status from database
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    When  the user runs `ft list`
+    Then  the output contains "accepted"
+    And   the output does not contain "no-activity"
+
+  @ft:72
+  Scenario: List filters by status flag
+    Given fts/login.ft has been synced with scenarios "User logs in" and "User fails login"
+    And   the user has set scenario 1 to "accepted"
+    And   the user has set scenario 2 to "in-progress"
+    When  the user runs `ft list --status=accepted`
+    Then  the output contains "User logs in"
+    And   the output does not contain "User fails login"
+
+  @ft:73
+  Scenario: List filters by no-activity flag
+    Given fts/login.ft has been synced with scenarios "User logs in" and "User fails login"
+    And   the user has set scenario 1 to "accepted"
+    When  the user runs `ft list --no-activity`
+    Then  the output contains "User fails login"
+    And   the output does not contain "User logs in"
+
+  @ft:74
+  Scenario: Status update requires both id and status arguments
+    When  the user runs `ft status 1`
+    Then  the command fails with an error about missing arguments
+
+  @ft:75
+  Scenario: Status update prints confirmation
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft status 1 accepted`
+    Then  the output contains "@ft:1"
+    And   the output contains "accepted"
+
+  @ft:76
+  Scenario: Project report omits zero-count statuses
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    When  the user runs `ft status`
+    Then  the output contains "accepted"
+    And   the output does not contain "in-progress"
+    And   the output does not contain "done"
+    And   the output does not contain "blocked"
+
+  @ft:77
+  Scenario: List filter with no matches returns empty output
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    When  the user runs `ft list --status=done`
+    Then  the output is empty
+    And   no error is returned
+
+  @ft:78
+  Scenario: Report requires init
+    Given the user has not run `ft init`
+    When  the user runs `ft status`
+    Then  the command fails with "run `ft init` first"
+
+  @ft:79
+  Scenario: Show history uses human-readable timestamps
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    When  the user runs `ft show 1`
+    Then  the history timestamp uses the format "Jan 2, 2006 3:04pm"
+    And   the timestamp does not use ISO 8601 format
+
+  @ft:80
+  Scenario: Show history aligns timestamps across rows
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    And   the user has set scenario 1 to "in-progress"
+    When  the user runs `ft show 1`
+    Then  the timestamp column starts at the same position on every history row
+
+  @ft:81
+  Scenario: Status update confirmation shows previous status
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    When  the user runs `ft status 1 in-progress`
+    Then  the output contains "accepted → in-progress"
+    And   the output contains "@ft:1"

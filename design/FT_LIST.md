@@ -26,6 +26,7 @@ ft list --no-activity
 
 - `--status=<status>` filters scenarios by their current status
 - `--no-activity` shows only scenarios with no status records
+- If no scenarios match the filter, the output is empty (no error)
 
 ## Sort Order
 
