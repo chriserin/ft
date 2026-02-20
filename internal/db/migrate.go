@@ -6,7 +6,14 @@ import (
 )
 
 // All contains the ordered list of migrations to apply.
-var All = []string{}
+var All = []string{
+	`CREATE TABLE files (
+		id         INTEGER PRIMARY KEY,
+		file_path  TEXT UNIQUE NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	)`,
+}
 
 func Migrate(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`)

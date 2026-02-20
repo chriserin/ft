@@ -29,6 +29,10 @@ func TestMigrate_CreatesSchemaVersionTable(t *testing.T) {
 }
 
 func TestMigrate_InitializesVersionToZero(t *testing.T) {
+	origAll := All
+	defer func() { All = origAll }()
+	All = []string{}
+
 	db := openTestDB(t)
 	require.NoError(t, Migrate(db))
 
