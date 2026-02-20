@@ -1,0 +1,7 @@
+
+A feature tracking system where the body/description of each feature is stored
+in a gherkin file rather than a database.  The database would maintain an
+association to each feature in the file.  A cli would be available to list
+features and update features on their status.  A daemon would run in the
+background to watch feature files and update feature files.  The database would
+be a sqlite db that was located within the same directory as the files.

@@ -1,0 +1,60 @@
+Feature: Phase 1 Foundation
+  `ft init` and database setup.
+
+  Background:
+    Given the user is in a project directory
+
+  Scenario: Create fts directory
+    Given the fts/ directory does not exist
+    When  the user runs `ft init`
+    Then  the fts/ directory is created
+    And   the output contains "fts/ created"
+
+  Scenario: fts directory already exists
+    Given the fts/ directory already exists
+    When  the user runs `ft init`
+    Then  no error is raised
+    And   the existing fts/ directory is unchanged
+    And   the output contains "fts/ already exists"
+
+  Scenario: Initialize SQLite database
+    Given the fts/ directory exists
+    And   fts/ft.db does not exist
+    When  the user runs `ft init`
+    Then  fts/ft.db is created
+    And   the database uses WAL mode
+    And   the output contains "fts/ft.db created"
+
+  Scenario: Database already exists
+    Given fts/ft.db already exists
+    When  the user runs `ft init`
+    Then  no error is raised
+    And   the existing database is unchanged
+    And   the output contains "fts/ft.db already exists"
+
+  Scenario: Add migration system
+    When  the user runs `ft init`
+    Then  the schema_version table exists in the database
+    And   the schema version is 0
+
+  Scenario: Add ft.db to gitignore
+    Given a .gitignore file exists
+    And   fts/ft.db is not listed in .gitignore
+    When  the user runs `ft init`
+    Then  fts/ft.db is added to .gitignore
+    And   the output contains "fts/ft.db added to .gitignore"
+
+  Scenario: ft.db already in gitignore
+    Given a .gitignore file exists
+    And   fts/ft.db is already listed in .gitignore
+    When  the user runs `ft init`
+    Then  .gitignore is unchanged
+    And   the output contains "fts/ft.db already in .gitignore"
+
+  Scenario: No gitignore exists
+    Given no .gitignore file exists
+    When  the user runs `ft init`
+    Then  a .gitignore file is created
+    And   fts/ft.db is listed in .gitignore
+    And   the output contains ".gitignore created"
+    And   the output contains "fts/ft.db added to .gitignore"
