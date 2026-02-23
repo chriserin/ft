@@ -13,7 +13,11 @@ var (
 	newStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	trkStyle     = lipgloss.NewStyle().Faint(true)
 	errStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	modStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	delStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	plusStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	tildeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	minusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	ftTagStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	idStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
 	keywordStyle = lipgloss.NewStyle().Bold(true)
@@ -33,8 +37,24 @@ func ErrLine(w io.Writer, path, message string) {
 	fmt.Fprintf(w, "%s  %s — %s\n", errStyle.Render("err"), path, message)
 }
 
+func ModLine(w io.Writer, path string) {
+	fmt.Fprintln(w, modStyle.Render("mod")+"  "+path)
+}
+
+func DelLine(w io.Writer, path string) {
+	fmt.Fprintln(w, delStyle.Render("del")+"  "+path)
+}
+
 func ScenarioLine(w io.Writer, id int64, name string) {
 	fmt.Fprintf(w, "       %s %s %s\n", plusStyle.Render("+"), ftTagStyle.Render(fmt.Sprintf("@ft:%d", id)), name)
+}
+
+func ModifiedScenarioLine(w io.Writer, id int64, name string) {
+	fmt.Fprintf(w, "       %s %s %s\n", tildeStyle.Render("~"), ftTagStyle.Render(fmt.Sprintf("@ft:%d", id)), name)
+}
+
+func RemovedScenarioLine(w io.Writer, id int64, name string) {
+	fmt.Fprintf(w, "       %s %s %s\n", minusStyle.Render("-"), ftTagStyle.Render(fmt.Sprintf("@ft:%d", id)), name)
 }
 
 func ListRow(w io.Writer, id int64, fileName, scenarioName, status string, idWidth, fileWidth, nameWidth int) {

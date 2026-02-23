@@ -87,7 +87,7 @@ func TestInit_AddsMigrationSystem(t *testing.T) {
 
 	var version int
 	require.NoError(t, sqlDB.QueryRow("SELECT version FROM schema_version").Scan(&version))
-	assert.Equal(t, 3, version)
+	assert.Equal(t, 5, version)
 }
 
 func TestInit_AddsToGitignore(t *testing.T) {

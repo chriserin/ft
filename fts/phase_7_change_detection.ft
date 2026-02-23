@@ -1,0 +1,182 @@
+Feature: Phase 7 Change Detection
+  `ft sync` detects changes to tracked .ft files and reconciles the database.
+  Scenarios are matched by @ft:<id> tag, with fallback to name matching.
+  Removed scenarios are handled based on whether they have status history.
+  Deleted files are marked in the database while preserving referential integrity.
+
+  Background:
+    Given the user has run `ft init`
+
+  @ft:82
+  Scenario: Update scenario name when tag matches
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user renames the scenario to "User signs in" keeping the @ft:1 tag
+    And   the user runs `ft sync`
+    Then  the scenarios record for id 1 has name "User signs in"
+    And   the output contains "~ @ft:1 User signs in"
+
+  @ft:83
+  Scenario: Update scenario content when tag matches
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user changes the steps under @ft:1
+    And   the user runs `ft sync`
+    Then  the scenarios record for id 1 has updated content
+    And   the updated_at timestamp is refreshed
+
+  @ft:84
+  Scenario: Modified file shows mod marker
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user modifies fts/login.ft
+    And   the user runs `ft sync`
+    Then  the output contains "mod  fts/login.ft"
+
+  @ft:85
+  Scenario: Unmodified file still shows trk marker
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft sync` without changing fts/login.ft
+    Then  the output contains "trk  fts/login.ft"
+
+  @ft:86
+  Scenario: Untagged scenario falls back to name match
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user removes the @ft:1 tag from the file but keeps the scenario
+    And   the user runs `ft sync`
+    Then  the existing scenarios record is matched by name
+    And   the @ft:1 tag is written back to the file
+
+  @ft:87
+  Scenario: Untagged scenario with no name match is new
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user adds a new untagged Scenario "Password reset" to fts/login.ft
+    And   the user runs `ft sync`
+    Then  a new scenarios record is created with name "Password reset"
+    And   a new @ft tag is written to the file for "Password reset"
+
+  @ft:88
+  Scenario: Tagged scenario with unknown ID falls back to name match
+    Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
+    When  the user changes the tag to @ft:999 but keeps the name "User logs in"
+    And   the user runs `ft sync`
+    Then  the existing scenarios record for id 1 is matched by name
+    And   the tag in the file is corrected to @ft:1
+
+  @ft:89
+  Scenario: Tagged scenario with unknown ID and no name match is new
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user replaces it with @ft:999 Scenario "Totally new"
+    And   the user runs `ft sync`
+    Then  a new scenarios record is created with name "Totally new"
+    And   a new @ft tag is written to the file replacing @ft:999
+
+  @ft:90
+  Scenario: Removed scenario with status history gets removed status
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    When  the user removes the scenario from fts/login.ft
+    And   the user runs `ft sync`
+    Then  a "removed" status is inserted for scenario 1
+    And   the output contains "- @ft:1 User logs in"
+
+  @ft:91
+  Scenario: Removed scenario with no history is deleted
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   no status has been set for scenario 1
+    When  the user removes the scenario from fts/login.ft
+    And   the user runs `ft sync`
+    Then  the scenarios record for id 1 is deleted from the database
+
+  @ft:92
+  Scenario: Deleted file shows del marker
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user deletes fts/login.ft
+    And   the user runs `ft sync`
+    Then  the output contains "del  fts/login.ft"
+
+  @ft:93
+  Scenario: Deleted file is marked deleted in database
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   no status has been set for scenario 1
+    When  the user deletes fts/login.ft
+    And   the user runs `ft sync`
+    Then  the files record for fts/login.ft has deleted = TRUE
+    And   the scenarios record for id 1 is deleted from the database
+
+  @ft:94
+  Scenario: Deleted file with status history preserves scenario
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    When  the user deletes fts/login.ft
+    And   the user runs `ft sync`
+    Then  the files record for fts/login.ft has deleted = TRUE
+    And   the scenarios record for id 1 still exists
+    And   a "removed" status is inserted for scenario 1
+
+  @ft:95
+  Scenario: Already-deleted file is skipped on subsequent syncs
+    Given fts/login.ft was previously synced and then deleted
+    And   the files record has deleted = TRUE
+    When  the user runs `ft sync`
+    Then  fts/login.ft does not appear in the output
+
+  @ft:96
+  Scenario: Content column is stored on sync
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    Then  the scenarios record for id 1 has a non-empty content column
+
+  @ft:97
+  Scenario: Content column is updated on change
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user adds a step "And they see a welcome message" to the scenario
+    And   the user runs `ft sync`
+    Then  the content column for scenario 1 contains "welcome message"
+
+  @ft:106
+  Scenario: Already-removed scenario is not re-removed on subsequent syncs
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "pass"
+    When  the user removes the scenario from fts/login.ft
+    And   the user runs `ft sync`
+    Then  a "removed" status is inserted for scenario 1
+    When  the user runs `ft sync` again without changes
+    Then  no additional "removed" status is inserted for scenario 1
+    And   the output does not contain "- @ft:1 User logs in"
+
+  @ft:107
+  Scenario: Removed scenario referenced by tag is restored
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "pass"
+    When  the user removes the scenario from fts/login.ft
+    And   the user runs `ft sync`
+    Then  a "removed" status is inserted for scenario 1
+    When  the user re-adds the scenario with its original @ft:1 tag
+    And   the user runs `ft sync`
+    Then  the scenario is matched by tag
+    And   a "restored" status is inserted for scenario 1
+    And   the output contains "+ @ft:1 User logs in"
+
+  @ft:100
+  Scenario: Summary line counts modified files
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user renames the scenario to "User signs in" keeping the @ft:1 tag
+    And   the user runs `ft sync`
+    Then  the summary line includes the file in the count
+
+  @ft:101
+  Scenario: Multiple scenarios mixed changes
+    Given fts/login.ft has been synced with scenarios "User logs in" and "User fails login"
+    When  the user renames "User logs in" to "User signs in" keeping its @ft tag
+    And   the user removes "User fails login" from the file
+    And   the user adds a new untagged Scenario "Password reset"
+    And   the user runs `ft sync`
+    Then  the output contains "~ @ft:1 User signs in"
+    And   the output contains "- @ft:2 User fails login"
+    And   the output contains "+ @ft:" followed by "Password reset"
+
+  @ft:102
+  Scenario: Change detection is idempotent
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    When  the user runs `ft sync` twice without changes
+    Then  the scenarios record is unchanged
+    And   the file is unchanged
+    And   both runs show "trk  fts/login.ft"
+

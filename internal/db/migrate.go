@@ -26,6 +26,8 @@ var All = []string{
 		status      TEXT NOT NULL,
 		changed_at  DATETIME NOT NULL DEFAULT (datetime('now'))
 	)`,
+	`ALTER TABLE scenarios ADD COLUMN content TEXT`,
+	`ALTER TABLE files ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT FALSE`,
 }
 
 func Migrate(db *sql.DB) error {

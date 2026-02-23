@@ -142,7 +142,7 @@ Feature: Phase 3 Parse Scenarios
     And   no scenarios record is created with name "Background"
 
   @ft:35
-  Scenario: Tagged scenario without DB record is re-registered
+  Scenario: Tagged scenario without DB record gets new ID
     Given the file fts/login.ft is already tracked in the files table
     And   the file fts/login.ft contains:
       """
@@ -153,8 +153,8 @@ Feature: Phase 3 Parse Scenarios
       """
     And   no scenarios record exists with id 5
     When  the user runs `ft sync`
-    Then  a scenarios record is created with id 5 and name "User logs in"
-    And   the output contains "User logs in"
+    Then  a scenarios record is created with a fresh id and name "User logs in"
+    And   the stale @ft:5 tag is replaced with the new @ft tag in the file
 
   @ft:36
   Scenario: New file strips stale tags and assigns new IDs
