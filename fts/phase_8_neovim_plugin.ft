@@ -1,7 +1,8 @@
 Feature: Phase 8 Neovim Plugin
   `ft.nvim` integrates the `ft` CLI into Neovim.
   Virtual text displays scenario status inline next to @ft:<id> tags.
-  A picker allows browsing, filtering, and jumping to scenarios via vim.ui.select.
+  A picker (:FtFind) allows browsing, filtering, and jumping to scenarios.
+  :FtList populates the quickfix list filtered by status.
   Buffer-local keymaps set scenario status under the cursor.
 
   Background:
@@ -38,7 +39,7 @@ Feature: Phase 8 Neovim Plugin
   @ft:113
   Scenario: Picker lists all scenarios except removed scenarios
     Given multiple scenarios have been synced across several files
-    When  the user runs :FtList
+    When  the user runs :FtFind
     Then  a picker opens showing @ft:<id> and scenario name excluding removed scenarios
     And   the preview window shows the output of `ft show <id>` for the selected scenario
 
@@ -127,7 +128,7 @@ Feature: Phase 8 Neovim Plugin
     And   whether fts/ft.db exists
 
   @ft:125
-  Scenario: List keymap opens picker
+  Scenario: Find keymap opens picker
     Given fts/login.ft is open in Neovim
     When  the user presses <leader>ff
     Then  the picker opens
@@ -141,51 +142,60 @@ Feature: Phase 8 Neovim Plugin
     And   the virtual text color is the color of a diagnostic error
 
   @ft:134
-  Scenario: FtStatus populates quickfix list with matching scenarios
+  Scenario: FtList populates quickfix list with matching scenarios
     Given fts/login.ft has @ft:1 with status "accepted"
     And   fts/login.ft has @ft:2 with status "in-progress"
     And   fts/checkout.ft has @ft:3 with status "accepted"
-    When  the user runs :FtStatus accepted
+    When  the user runs :FtList accepted
     Then  the quickfix list opens with two entries: @ft:1 and @ft:3
     And   each entry shows the scenario name and file path
     And   selecting an entry jumps to the @ft:<id> line in that file
 
   @ft:135
-  Scenario: FtStatus with no matches shows empty quickfix list
+  Scenario: FtList with no matches does not open quickfix
     Given no scenarios have status "done"
-    When  the user runs :FtStatus done
+    When  the user runs :FtList done
     Then  the quickfix list does not open
     And   a vim.notify message says no scenarios match "done"
 
   @ft:137
-  Scenario: FtStatus negation populates quickfix with non-matching scenarios
+  Scenario: FtList negation populates quickfix with non-matching scenarios
     Given fts/login.ft has @ft:1 with status "accepted"
     And   fts/login.ft has @ft:2 with status "in-progress"
     And   fts/checkout.ft has @ft:3 with status "accepted"
-    When  the user runs :FtStatus !accepted
+    When  the user runs :FtList !accepted
     Then  the quickfix list opens with one entry: @ft:2
     And   scenarios with status "accepted" are excluded
 
   @ft:138
-  Scenario: FtStatus negation with no non-matching scenarios does not open quickfix
+  Scenario: FtList negation with no non-matching scenarios does not open quickfix
     Given all scenarios have status "accepted"
-    When  the user runs :FtStatus !accepted
+    When  the user runs :FtList !accepted
     Then  the quickfix list does not open
     And   a vim.notify message says no scenarios match "!accepted"
 
   @ft:139
-  Scenario: FtStatus excludes removed scenarios from quickfix results
+  Scenario: FtList excludes removed scenarios from quickfix results
     Given fts/login.ft has @ft:1 with status "accepted"
     And   fts/login.ft has @ft:2 with status "removed"
-    And   fts/checkout.ft has @ft:3 with status "accepted"
-    When  the user runs :FtStatus accepted
-    Then  the quickfix list opens with two entries: @ft:1 and @ft:3
+    And   fts/checkout.ft has @ft:3 with status "in-progress"
+    When  the user runs :FtList !accepted
+    Then  the quickfix list opens with one entry: @ft:3
     And   @ft:2 is not included
 
   @ft:136
-  Scenario: FtStatus without argument shows usage error
-    When  the user runs :FtStatus with no arguments
-    Then  a vim.notify error shows "Usage: :FtStatus <status>"
+  Scenario: FtList without argument shows usage error
+    When  the user runs :FtList with no arguments
+    Then  a vim.notify error shows "Usage: :FtList <status...>"
+
+  @ft:154
+  Scenario: FtList accepts multiple status arguments
+    Given fts/login.ft has @ft:1 with status "accepted"
+    And   fts/login.ft has @ft:2 with status "ready"
+    And   fts/login.ft has @ft:3 with status "in-progress"
+    When  the user runs :FtList accepted ready
+    Then  the quickfix list opens with two entries: @ft:1 and @ft:2
+    And   @ft:3 is not included
 
   @ft:127
   Scenario: Virtual text updates after external status change

@@ -272,8 +272,8 @@ func TestList_ShowsCurrentStatusFromDB(t *testing.T) {
 	assert.NotContains(t, out, "no-activity")
 }
 
-// @ft:72
-func TestList_FiltersByStatusFlag(t *testing.T) {
+// @ft:72 (updated: positional filter replaces --status flag)
+func TestList_FiltersByStatusArg(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
 	setupScenario(t, "Feature: Login\n  Scenario: User logs in\n    Given a user\n\n  Scenario: User fails login\n    Given a user\n")
@@ -282,15 +282,15 @@ func TestList_FiltersByStatusFlag(t *testing.T) {
 	runStatusUpdate(t, "2", "in-progress")
 
 	var buf bytes.Buffer
-	require.NoError(t, RunList(&buf, "accepted", false))
+	require.NoError(t, RunList(&buf, []string{"accepted"}, nil))
 	out := buf.String()
 
 	assert.Contains(t, out, "User logs in")
 	assert.NotContains(t, out, "User fails login")
 }
 
-// @ft:73
-func TestList_FiltersByNoActivityFlag(t *testing.T) {
+// @ft:73 (updated: negation replaces --no-activity flag)
+func TestList_FiltersByNoActivityNegation(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
 	setupScenario(t, "Feature: Login\n  Scenario: User logs in\n    Given a user\n\n  Scenario: User fails login\n    Given a user\n")
@@ -298,7 +298,7 @@ func TestList_FiltersByNoActivityFlag(t *testing.T) {
 	runStatusUpdate(t, "1", "accepted")
 
 	var buf bytes.Buffer
-	require.NoError(t, RunList(&buf, "", true))
+	require.NoError(t, RunList(&buf, []string{"no-activity"}, nil))
 	out := buf.String()
 
 	assert.Contains(t, out, "User fails login")
@@ -347,7 +347,7 @@ func TestStatus_ReportOmitsZeroCounts(t *testing.T) {
 	assert.NotContains(t, out, "blocked")
 }
 
-// @ft:77
+// @ft:77 (updated: positional filter replaces --status flag)
 func TestList_FilterNoMatchesReturnsEmpty(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -356,7 +356,7 @@ func TestList_FilterNoMatchesReturnsEmpty(t *testing.T) {
 	runStatusUpdate(t, "1", "accepted")
 
 	var buf bytes.Buffer
-	err := RunList(&buf, "done", false)
+	err := RunList(&buf, []string{"done"}, nil)
 
 	require.NoError(t, err)
 	assert.Empty(t, buf.String())

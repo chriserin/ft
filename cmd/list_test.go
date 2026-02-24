@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func runList(t *testing.T) string {
+func runList(t *testing.T, includes ...string) string {
 	t.Helper()
 	var buf bytes.Buffer
-	require.NoError(t, RunList(&buf, "", false))
+	require.NoError(t, RunList(&buf, includes, nil))
 	return buf.String()
 }
 
@@ -159,11 +159,178 @@ func TestList_FileNameShowsBasename(t *testing.T) {
 	assert.NotContains(t, out, "fts/login.ft")
 }
 
+func TestList_FilterBySingleStatus(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+
+  Scenario: User resets password
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+	runStatusUpdate(t, "2", "in-progress")
+
+	out := runList(t, "accepted")
+
+	assert.Contains(t, out, "User logs in")
+	assert.NotContains(t, out, "User fails login")
+	assert.NotContains(t, out, "User resets password")
+}
+
+func TestList_FilterByNegatedStatus(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+
+  Scenario: User resets password
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+	runStatusUpdate(t, "2", "in-progress")
+	runStatusUpdate(t, "3", "removed")
+
+	var buf bytes.Buffer
+	require.NoError(t, RunList(&buf, nil, []string{"removed"}))
+	out := buf.String()
+
+	assert.Contains(t, out, "User logs in")
+	assert.Contains(t, out, "User fails login")
+	assert.NotContains(t, out, "User resets password")
+}
+
+func TestList_FilterByMultiplePositiveStatuses(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+
+  Scenario: User resets password
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+	runStatusUpdate(t, "2", "ready")
+	runStatusUpdate(t, "3", "in-progress")
+
+	out := runList(t, "accepted", "ready")
+
+	assert.Contains(t, out, "User logs in")
+	assert.Contains(t, out, "User fails login")
+	assert.NotContains(t, out, "User resets password")
+}
+
+func TestList_FilterByMultipleNegatedStatuses(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+
+  Scenario: User resets password
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+	runStatusUpdate(t, "2", "removed")
+
+	var buf bytes.Buffer
+	require.NoError(t, RunList(&buf, nil, []string{"removed", "no-activity"}))
+	out := buf.String()
+
+	assert.Contains(t, out, "User logs in")
+	assert.NotContains(t, out, "User fails login")
+	assert.NotContains(t, out, "User resets password")
+}
+
+func TestList_FilterMixedPositiveAndNegated(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+
+  Scenario: User resets password
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "ready")
+	runStatusUpdate(t, "2", "accepted")
+
+	var buf bytes.Buffer
+	require.NoError(t, RunList(&buf, []string{"ready"}, []string{"no-activity"}))
+	out := buf.String()
+
+	assert.Contains(t, out, "User logs in")
+	assert.NotContains(t, out, "User fails login")
+	assert.NotContains(t, out, "User resets password")
+}
+
+func TestList_FilterNoMatchesEmpty(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	out := runList(t, "done")
+
+	assert.Empty(t, out)
+}
+
+func TestList_NoFilterShowsAll(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+
+  Scenario: User resets password
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+	runStatusUpdate(t, "2", "in-progress")
+
+	out := runList(t)
+
+	assert.Contains(t, out, "User logs in")
+	assert.Contains(t, out, "User fails login")
+	assert.Contains(t, out, "User resets password")
+}
+
 func TestList_RequiresInit(t *testing.T) {
 	inTempDir(t)
 
 	var buf bytes.Buffer
-	err := RunList(&buf, "", false)
+	err := RunList(&buf, nil, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "run `ft init` first")

@@ -117,22 +117,49 @@ Feature: Phase 6 ft status
     Then  the output contains "accepted"
     And   the output does not contain "no-activity"
 
-  @ft:72
-  Scenario: List filters by status flag
-    Given fts/login.ft has been synced with scenarios "User logs in" and "User fails login"
-    And   the user has set scenario 1 to "accepted"
-    And   the user has set scenario 2 to "in-progress"
-    When  the user runs `ft list --status=accepted`
-    Then  the output contains "User logs in"
-    And   the output does not contain "User fails login"
+  @ft:147
+  Scenario: Filter by single status
+    Given fts/login.ft has scenarios with statuses "accepted", "in-progress", and "no-activity"
+    When  the user runs `ft list accepted`
+    Then  the output contains only scenarios with status "accepted"
 
-  @ft:73
-  Scenario: List filters by no-activity flag
-    Given fts/login.ft has been synced with scenarios "User logs in" and "User fails login"
-    And   the user has set scenario 1 to "accepted"
-    When  the user runs `ft list --no-activity`
-    Then  the output contains "User fails login"
-    And   the output does not contain "User logs in"
+  @ft:148
+  Scenario: Filter by negated status
+    Given fts/login.ft has scenarios with statuses "accepted", "in-progress", and "removed"
+    When  the user runs `ft list --not removed`
+    Then  the output contains scenarios with status "accepted" and "in-progress"
+    And   the output does not contain scenarios with status "removed"
+
+  @ft:149
+  Scenario: Filter by multiple positive statuses
+    Given fts/login.ft has scenarios with statuses "accepted", "ready", and "in-progress"
+    When  the user runs `ft list accepted ready`
+    Then  the output contains scenarios with status "accepted" and "ready"
+    And   the output does not contain scenarios with status "in-progress"
+
+  @ft:150
+  Scenario: Filter by multiple negated statuses
+    Given fts/login.ft has scenarios with statuses "accepted", "removed", and "no-activity"
+    When  the user runs `ft list --not removed --not no-activity`
+    Then  the output contains only scenarios with status "accepted"
+
+  @ft:151
+  Scenario: Filter with mixed positive and negated statuses
+    Given fts/login.ft has scenarios with statuses "ready", "accepted", and "no-activity"
+    When  the user runs `ft list ready --not no-activity`
+    Then  the output contains only scenarios with status "ready"
+
+  @ft:152
+  Scenario: Filter with no matching scenarios produces empty output
+    Given fts/login.ft has scenarios with statuses "accepted" and "in-progress"
+    When  the user runs `ft list done`
+    Then  the output is empty
+
+  @ft:153
+  Scenario: No filter arguments shows all scenarios
+    Given fts/login.ft has scenarios with statuses "accepted", "in-progress", and "no-activity"
+    When  the user runs `ft list`
+    Then  the output contains all three scenarios
 
   @ft:74
   Scenario: Status update requires both id and status arguments
@@ -155,14 +182,6 @@ Feature: Phase 6 ft status
     And   the output does not contain "in-progress"
     And   the output does not contain "done"
     And   the output does not contain "blocked"
-
-  @ft:77
-  Scenario: List filter with no matches returns empty output
-    Given fts/login.ft has been synced with Scenario "User logs in"
-    And   the user has set scenario 1 to "accepted"
-    When  the user runs `ft list --status=done`
-    Then  the output is empty
-    And   no error is returned
 
   @ft:78
   Scenario: Report requires init
@@ -193,3 +212,4 @@ Feature: Phase 6 ft status
     When  the user runs `ft status 1 in-progress`
     Then  the output contains "accepted → in-progress"
     And   the output contains "@ft:1"
+

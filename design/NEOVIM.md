@@ -28,7 +28,7 @@ Display scenario status inline next to `@ft:<id>` tags using extmarks.
 
 ### Scenario Picker
 
-Browse, filter, and jump to scenarios via `:FtList`.
+Browse, filter, and jump to scenarios via `:FtFind`.
 
 ```
 > user logs
@@ -58,8 +58,8 @@ Buffer-local key mappings in `.ft` files to set scenario status under the cursor
 | Command                   | Behavior                                                      |
 | ------------------------- | ------------------------------------------------------------- |
 | `:FtSync`                 | Run `ft sync`, notify output, reload buffer (tags may change) |
-| `:FtList`                 | Open scenario picker (Snacks.picker)                          |
-| `:FtStatus <status>`      | Open quickfix list of all scenarios matching `<status>`. Prefix with `!` to negate (e.g. `:FtStatus !accepted`). Removed scenarios are always excluded. |
+| `:FtFind`                 | Open scenario picker (Snacks.picker)                          |
+| `:FtList <status...>`     | Open quickfix list of scenarios matching status filters. Multiple arguments supported. Prefix with `!` to negate (e.g. `:FtList !accepted`). Removed scenarios are always excluded. |
 
 ### Checkhealth
 
@@ -103,7 +103,7 @@ require("ft").setup({
     mappings = {                -- key -> status (buffer-local in .ft files)
       ["<leader>tr"] = "ready",
       ["<leader>ta"] = "accepted",
-      ["<leader>ff"] = "list",      -- open scenario picker
+      ["<leader>ff"] = "find",      -- open scenario picker
     },
   },
 
@@ -170,7 +170,7 @@ Strategy: `@ft:<id>` from the left, status (last `%S+`) from the right, filename
 {
   "chriserin/ft.nvim",
   event = { "BufReadPre *.ft", "BufNewFile *.ft" },
-  cmd = { "FtSync", "FtList", "FtStatus" },
+  cmd = { "FtSync", "FtFind", "FtList" },
   opts = {
     keymaps = {
       mappings = {

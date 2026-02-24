@@ -11,23 +11,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	statusFlag    string
-	noActivityFlag bool
-)
+var notStatuses []string
 
 var listCmd = &cobra.Command{
-	Use:   "list",
+	Use:   "list [status...]",
 	Short: "List all tracked scenarios",
+	Long: `List all tracked scenarios. Filter by passing status names as arguments.
+Use --not to exclude statuses.
+
+Examples:
+  ft list                              Show all scenarios
+  ft list accepted                     Show only accepted scenarios
+  ft list accepted ready               Show accepted and ready scenarios
+  ft list --not removed                Show all except removed scenarios
+  ft list ready --not no-activity      Show ready, excluding no-activity
+  ft list --not removed --not done     Exclude multiple statuses`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return RunList(cmd.OutOrStdout(), statusFlag, noActivityFlag)
+		return RunList(cmd.OutOrStdout(), args, notStatuses)
 	},
 }
 
 func init() {
-	listCmd.Flags().StringVar(&statusFlag, "status", "", "Filter by status")
-	listCmd.Flags().BoolVar(&noActivityFlag, "no-activity", false, "Show only scenarios with no status")
 	rootCmd.AddCommand(listCmd)
+	listCmd.Flags().StringArrayVar(&notStatuses, "not", nil, "exclude scenarios with this status (repeatable)")
 }
 
 type listRow struct {
@@ -37,7 +43,26 @@ type listRow struct {
 	status   string
 }
 
-func RunList(w io.Writer, statusFilter string, noActivity bool) error {
+func matchesFilter(status string, includes []string, excludes []string) bool {
+	for _, ex := range excludes {
+		if status == ex {
+			return false
+		}
+	}
+
+	if len(includes) == 0 {
+		return true
+	}
+
+	for _, inc := range includes {
+		if status == inc {
+			return true
+		}
+	}
+	return false
+}
+
+func RunList(w io.Writer, includes []string, excludes []string) error {
 	if _, err := os.Stat("fts"); os.IsNotExist(err) {
 		return fmt.Errorf("run `ft init` first")
 	}
@@ -72,10 +97,7 @@ func RunList(w io.Writer, statusFilter string, noActivity bool) error {
 		}
 		r.fileName = filepath.Base(filePath)
 
-		if statusFilter != "" && r.status != statusFilter {
-			continue
-		}
-		if noActivity && r.status != "no-activity" {
+		if (len(includes) > 0 || len(excludes) > 0) && !matchesFilter(r.status, includes, excludes) {
 			continue
 		}
 

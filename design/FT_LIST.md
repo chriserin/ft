@@ -20,12 +20,19 @@ Columns:
 ## Filtering
 
 ```
-ft list --status=<status>
-ft list --no-activity
+ft list <status>
+ft list --not <status>
+ft list <status1> <status2>
+ft list --not <status1> --not <status2>
+ft list <status1> --not <status2>
 ```
 
-- `--status=<status>` filters scenarios by their current status
-- `--no-activity` shows only scenarios with no status records
+- Positional arguments include scenarios matching that status
+- `--not <status>` excludes scenarios matching that status (repeatable)
+- Positive and negative filters can be mixed: `ft list ready --not no-activity` means "status is ready AND status is not no-activity"
+- When only `--not` filters are given, all non-matching scenarios are shown: `ft list --not removed` shows everything except removed
+- When only positive filters are given, only matching scenarios are shown: `ft list accepted ready` shows accepted and ready
+- If no arguments are given, all scenarios are shown
 - If no scenarios match the filter, the output is empty (no error)
 
 ## Sort Order
