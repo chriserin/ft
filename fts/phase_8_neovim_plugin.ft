@@ -1,0 +1,206 @@
+Feature: Phase 8 Neovim Plugin
+  `ft.nvim` integrates the `ft` CLI into Neovim.
+  Virtual text displays scenario status inline next to @ft:<id> tags.
+  A picker allows browsing, filtering, and jumping to scenarios via vim.ui.select.
+  Buffer-local keymaps set scenario status under the cursor.
+
+  Background:
+    Given the user has ft.nvim installed and configured
+    And   the user has run `ft init` in the project
+
+  @ft:109
+  Scenario: Virtual text shows scenario status
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   scenario 1 has status "accepted"
+    When  the user opens fts/login.ft in Neovim
+    Then  virtual text "accepted" appears on the @ft:1 line
+
+  @ft:110
+  Scenario: Sync runs on BufEnter
+    Given fts/login.ft has been modified outside Neovim
+    When  the user opens or switches to fts/login.ft
+    Then  ft sync runs automatically
+    And   the buffer is reloaded to pick up any new @ft tags
+    And   the virtual text is refreshed with current statuses
+
+  @ft:111
+  Scenario: Virtual text updates after status change
+    Given fts/login.ft is open with scenario 1 showing "accepted"
+    When  the user sets scenario 1 to "done" via keymap
+    Then  the virtual text for @ft:1 updates to "done"
+
+  @ft:112
+  Scenario: Virtual text uses configured highlight groups
+    Given the user has configured "accepted" to use "DiagnosticOk"
+    When  virtual text renders for a scenario with status "accepted"
+    Then  the virtual text uses the DiagnosticOk highlight group
+
+  @ft:113
+  Scenario: Picker lists all scenarios except removed scenarios
+    Given multiple scenarios have been synced across several files
+    When  the user runs :FtList
+    Then  a picker opens showing @ft:<id> and scenario name excluding removed scenarios
+    And   the preview window shows the output of `ft show <id>` for the selected scenario
+
+  @ft:114
+  Scenario: Picker filters by fuzzy search with name
+    Given the picker is open with multiple scenarios
+    When  the user types a search query
+    Then  the results are filtered by name
+
+  @ft:131
+  Scenario: Picker filters by fuzzy search with ft id
+    Given the picker is open with multiple scenarios
+    When  the user types a search query: <ft id>
+    Then  the results are filtered by that ft id
+
+  @ft:115
+  Scenario: Picker jumps to scenario
+    Given the picker is open
+    When  the user selects a scenario and presses enter
+    Then  Neovim opens the file and jumps to the @ft:<id> line
+
+  @ft:132
+  Scenario: Picker opens from any file in the project
+    Given the user is editing a non-.ft file in an ft project
+    When  the user presses <leader>ff
+    Then  the picker opens showing all scenarios across all .ft files
+
+  @ft:119
+  Scenario: Status keymap sets status under cursor
+    Given fts/login.ft is open with the cursor inside a scenario block
+    When  the user presses the keymap for "accepted"
+    Then  ft status is called with the scenario's @ft:<id> and "accepted"
+    And   a vim.notify message shows "@ft:<id> <prev> → accepted"
+
+  @ft:120
+  Scenario: Status keymap finds tag above Scenario line
+    Given the cursor is on a step line below a Scenario with @ft:1
+    When  the user presses a status keymap
+    Then  the plugin walks up to find @ft:1 and uses that ID
+
+  @ft:133
+  Scenario: Status keymap on @ft tag line applies to that scenario
+    Given fts/login.ft has @ft:1 above "Scenario: User logs in"
+    And   @ft:2 above "Scenario: User logs out"
+    And   the cursor is on the @ft:2 line
+    When  the user presses the keymap for "accepted"
+    Then  ft status is called with id 2 and "accepted"
+    And   the status of @ft:1 is not changed
+
+  @ft:121
+  Scenario: Status keymap notifies when no tag found
+    Given the cursor is in a file with no @ft tags
+    When  the user presses a status keymap
+    Then  a vim.notify message tells the user to run :FtSync
+
+  @ft:130
+  Scenario: Status keymap does not update tagged scenario above untagged one
+    Given fts/login.ft has @ft:1 above "Scenario: User logs in"
+    And   a new "Scenario: User signs up" exists below it without an @ft tag
+    And   the cursor is inside the untagged scenario
+    When  the user presses a status keymap
+    Then  a vim.notify message tells the user to run :FtSync
+    And   the status of @ft:1 is not changed
+
+  @ft:122
+  Scenario: FtSync command runs sync and reloads buffer
+    Given fts/login.ft is open in Neovim
+    When  the user runs :FtSync
+    Then  ft sync is executed
+    And   the buffer is reloaded to pick up any new @ft tags
+    And   virtual text is refreshed
+    And   the cursor line and cursor are in the same place of the buffer
+
+  @ft:123
+  Scenario: Sync on write triggers sync after save
+    Given sync_on_write is enabled
+    When  the user saves an .ft file
+    Then  ft sync runs automatically
+    And   the buffer is reloaded with updated tags
+
+  @ft:124
+  Scenario: Checkhealth reports ft binary status
+    When  the user runs :checkhealth ft
+    Then  the output reports whether the ft binary is found
+    And   whether fts/ and fts/ft.db exist
+    And   whether fts/ft.db exists
+
+  @ft:125
+  Scenario: List keymap opens picker
+    Given fts/login.ft is open in Neovim
+    When  the user presses <leader>ff
+    Then  the picker opens
+
+  @ft:129
+  Scenario: Rejected keymap sets status to rejected
+    Given fts/login.ft is open with the cursor inside a scenario block
+    When  the user presses <leader>tj
+    Then  the scenario status is set to "rejected"
+    And   the virtual text updates to "rejected"
+    And   the virtual text color is the color of a diagnostic error
+
+  @ft:134
+  Scenario: FtStatus populates quickfix list with matching scenarios
+    Given fts/login.ft has @ft:1 with status "accepted"
+    And   fts/login.ft has @ft:2 with status "in-progress"
+    And   fts/checkout.ft has @ft:3 with status "accepted"
+    When  the user runs :FtStatus accepted
+    Then  the quickfix list opens with two entries: @ft:1 and @ft:3
+    And   each entry shows the scenario name and file path
+    And   selecting an entry jumps to the @ft:<id> line in that file
+
+  @ft:135
+  Scenario: FtStatus with no matches shows empty quickfix list
+    Given no scenarios have status "done"
+    When  the user runs :FtStatus done
+    Then  the quickfix list does not open
+    And   a vim.notify message says no scenarios match "done"
+
+  @ft:137
+  Scenario: FtStatus negation populates quickfix with non-matching scenarios
+    Given fts/login.ft has @ft:1 with status "accepted"
+    And   fts/login.ft has @ft:2 with status "in-progress"
+    And   fts/checkout.ft has @ft:3 with status "accepted"
+    When  the user runs :FtStatus !accepted
+    Then  the quickfix list opens with one entry: @ft:2
+    And   scenarios with status "accepted" are excluded
+
+  @ft:138
+  Scenario: FtStatus negation with no non-matching scenarios does not open quickfix
+    Given all scenarios have status "accepted"
+    When  the user runs :FtStatus !accepted
+    Then  the quickfix list does not open
+    And   a vim.notify message says no scenarios match "!accepted"
+
+  @ft:139
+  Scenario: FtStatus excludes removed scenarios from quickfix results
+    Given fts/login.ft has @ft:1 with status "accepted"
+    And   fts/login.ft has @ft:2 with status "removed"
+    And   fts/checkout.ft has @ft:3 with status "accepted"
+    When  the user runs :FtStatus accepted
+    Then  the quickfix list opens with two entries: @ft:1 and @ft:3
+    And   @ft:2 is not included
+
+  @ft:136
+  Scenario: FtStatus without argument shows usage error
+    When  the user runs :FtStatus with no arguments
+    Then  a vim.notify error shows "Usage: :FtStatus <status>"
+
+  @ft:127
+  Scenario: Virtual text updates after external status change
+    Given fts/login.ft is open in Neovim with @ft:1 showing "accepted"
+    When  the user runs `ft status 1 done` in another tmux pane
+    And   the user switches back to the Neovim pane
+    Then  the FocusGained autocmd runs ft sync
+    And   the virtual text for @ft:1 updates to "done"
+
+  @ft:128
+  Scenario: New scenario gets tagged after external edit
+    Given fts/login.ft is open in Neovim
+    When  a new Scenario block is appended to the file in another tmux pane
+    And   the user switches back to the Neovim pane
+    Then  the FocusGained autocmd runs ft sync
+    And   the buffer is reloaded with a new @ft:<id> tag above the new Scenario
+    And   virtual text appears for the newly tagged scenario
+

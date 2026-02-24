@@ -118,7 +118,24 @@ Extend `ft sync` with full reconciliation.
 
 ---
 
-## Phase 8: `ft sync` — Test Link Discovery
+## Phase 8: `ft.nvim` — Neovim Plugin
+
+Integrate `ft` into Neovim (see design/NEOVIM.md).
+
+- Virtual text status display next to `@ft:<id>` tags via extmarks
+- Telescope picker to browse, filter, and jump to scenarios
+- Buffer-local keymaps to set scenario status under cursor
+- User commands: `:FtSync`, `:FtList`, `:FtStatus`
+- Autocommands for virtual text refresh and optional sync-on-write
+- `:checkhealth ft` for diagnostics
+
+**Schema**: none — calls the `ft` CLI binary for all data access.
+
+**Testable**: open a `.ft` file, verify virtual text appears. Use keymaps to set status, verify virtual text updates. Open Telescope picker, filter and jump to scenario.
+
+---
+
+## Phase 9: `ft sync` — Test Link Discovery
 
 Extend `ft sync` with test link scanning.
 
@@ -134,7 +151,7 @@ Extend `ft sync` with test link scanning.
 
 ---
 
-## Phase 9: File Recreation
+## Phase 10: File Recreation
 
 Recreate deleted files when accessing detached scenarios.
 
@@ -148,7 +165,7 @@ Recreate deleted files when accessing detached scenarios.
 
 ---
 
-## Phase 10: Daemon (`ftd`)
+## Phase 11: Daemon (`ftd`)
 
 Automate sync via file watching.
 

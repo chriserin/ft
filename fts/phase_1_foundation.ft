@@ -66,3 +66,4 @@ Feature: Phase 1 Foundation
     And   fts/ft.db is listed in .gitignore
     And   the output contains ".gitignore created"
     And   the output contains "fts/ft.db added to .gitignore"
+
