@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"os"
@@ -55,12 +56,13 @@ func RunShow(w io.Writer, rawID string) error {
 	var scenarioID int64
 	var scenarioName string
 	var filePath string
+	var storedContent sql.NullString
 	err = sqlDB.QueryRow(`
-		SELECT s.id, s.name, f.file_path
+		SELECT s.id, s.name, f.file_path, s.content
 		FROM scenarios s
 		JOIN files f ON s.file_id = f.id
 		WHERE s.id = ?
-	`, id).Scan(&scenarioID, &scenarioName, &filePath)
+	`, id).Scan(&scenarioID, &scenarioName, &filePath, &storedContent)
 	if err != nil {
 		return fmt.Errorf("scenario %d not found", id)
 	}
@@ -68,29 +70,33 @@ func RunShow(w io.Writer, rawID string) error {
 	fileName := filepath.Base(filePath)
 
 	// Read and parse the file
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", filePath, err)
-	}
+	var scenarioContent string
+	var background string
+	content, readErr := os.ReadFile(filePath)
+	if readErr == nil {
+		doc, parseErrors := parser.Parse(filePath, content)
+		pf := parser.Transform(doc, filePath, content, parseErrors)
 
-	doc, parseErrors := parser.Parse(filePath, content)
-	pf := parser.Transform(doc, filePath, content, parseErrors)
-
-	// Find the matching scenario by FtTag
-	idStr := strconv.FormatInt(id, 10)
-	var matched *parser.ParsedScenario
-	for i := range pf.Scenarios {
-		if pf.Scenarios[i].FtTag == idStr {
-			matched = &pf.Scenarios[i]
-			break
+		// Find the matching scenario by FtTag
+		idStr := strconv.FormatInt(id, 10)
+		for i := range pf.Scenarios {
+			if pf.Scenarios[i].FtTag == idStr {
+				scenarioContent = pf.Scenarios[i].Content
+				break
+			}
 		}
+
+		background = extractBackground(string(content))
 	}
-	if matched == nil {
+
+	// Fall back to stored content for removed scenarios
+	if scenarioContent == "" && storedContent.Valid {
+		scenarioContent = storedContent.String
+	}
+
+	if scenarioContent == "" {
 		return fmt.Errorf("scenario %d not found in file %s", id, filePath)
 	}
-
-	// Extract Background content from raw file lines
-	background := extractBackground(string(content))
 
 	// Query current status
 	currentStatus := "no-activity"
@@ -134,7 +140,7 @@ func RunShow(w io.Writer, rawID string) error {
 
 	// Print scenario content
 	fmt.Fprintln(w)
-	ui.ShowGherkin(w, matched.Content)
+	ui.ShowGherkin(w, scenarioContent)
 
 	return nil
 }

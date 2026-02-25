@@ -216,3 +216,29 @@ func TestShow_HistoryFlagNoStatus(t *testing.T) {
 	assert.Contains(t, out, "@ft:1")
 	assert.Contains(t, out, "no-activity")
 }
+
+func TestShow_RemovedScenarioUsesStoredContent(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given the user is on the login page
+    When  the user enters valid credentials
+    Then  the user sees the dashboard
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Remove the scenario from the file
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+`), 0o644))
+	runSync(t)
+
+	out := runShow(t, "1")
+
+	assert.Contains(t, out, "@ft:1")
+	assert.Contains(t, out, "Given the user is on the login page")
+	assert.Contains(t, out, "When  the user enters valid credentials")
+	assert.Contains(t, out, "Then  the user sees the dashboard")
+	assert.Contains(t, out, "removed")
+}

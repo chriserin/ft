@@ -120,6 +120,17 @@ Feature: Phase 5 ft show
     And   each row has a human readable timestamp in the local timezone
     And   the output does not contain "Scenario:"
 
+  @ft:170
+  Scenario: Show displays removed scenario from stored content
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   scenario 1 has stored content in the database
+    And   the scenario has been removed from fts/login.ft
+    And   a subsequent sync has marked the scenario as "removed"
+    When  the user runs `ft show 1`
+    Then  the output contains "@ft:1"
+    And   the output contains the Gherkin content from the stored content column
+    And   the output contains "Status:" with "removed"
+
   @ft:163
   Scenario: Show --history with no status records shows no-activity
     Given fts/login.ft has been synced with Scenario "User logs in"
