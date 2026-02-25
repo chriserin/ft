@@ -217,6 +217,44 @@ func TestShow_HistoryFlagNoStatus(t *testing.T) {
 	assert.Contains(t, out, "no-activity")
 }
 
+// @ft:182
+func TestShow_IncludesTestsSection(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+// @ft:1
+func TestLogin(t *testing.T) {}
+`), 0o644))
+	runSync(t)
+
+	out := runShow(t, "1")
+
+	assert.Contains(t, out, "\n\nTests:")
+	assert.Contains(t, out, "pkg/login_test.go:2")
+}
+
+// @ft:183
+func TestShow_OmitsTestsSectionWhenNoLinks(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	out := runShow(t, "1")
+
+	assert.NotContains(t, out, "Tests:")
+}
+
 func TestShow_RemovedScenarioUsesStoredContent(t *testing.T) {
 	inTempDir(t)
 	runInit(t)

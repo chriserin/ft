@@ -1,0 +1,134 @@
+Feature: Phase 10 Test Links
+  `ft sync` discovers test files matching `*_test.go` and scans them for
+  `@ft:<id>` comments. Discovered links are stored in the `test_links` table.
+  `ft tests <id>` lists linked tests. `ft show` includes a Tests section.
+
+  Background:
+    Given the user has run `ft init`
+
+  @ft:171
+  Scenario: Sync discovers test link in Go test file
+    Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
+    And   a file cmd/login_test.go exists with a comment "// @ft:1" on line 5
+    When  the user runs `ft sync`
+    Then  the test_links table contains a row for scenario_id 1
+    And   the row has file_path "cmd/login_test.go" and line_number 5
+
+  @ft:172
+  Scenario: Sync discovers multiple test links in one file
+    Given fts/login.ft has been synced with @ft:1 and @ft:2
+    And   cmd/login_test.go contains "// @ft:1" on line 5 and "// @ft:2" on line 20
+    When  the user runs `ft sync`
+    Then  the test_links table contains a row for scenario_id 1 with line_number 5
+    And   the test_links table contains a row for scenario_id 2 with line_number 20
+
+  @ft:173
+  Scenario: Sync discovers test link referencing same scenario from multiple files
+    Given fts/login.ft has been synced with @ft:1
+    And   cmd/login_test.go contains "// @ft:1" on line 5
+    And   cmd/auth_test.go contains "// @ft:1" on line 10
+    When  the user runs `ft sync`
+    Then  the test_links table contains two rows for scenario_id 1
+    And   one row has file_path "cmd/login_test.go" and line_number 5
+    And   one row has file_path "cmd/auth_test.go" and line_number 10
+
+  @ft:174
+  Scenario: Sync removes stale test link when tag is deleted from file
+    Given fts/login.ft has been synced with @ft:1
+    And   cmd/login_test.go contains "// @ft:1" on line 5
+    And   ft sync has been run to discover the link
+    When  the "// @ft:1" comment is removed from cmd/login_test.go
+    And   the user runs `ft sync`
+    Then  the test_links table has no rows for scenario_id 1
+
+  @ft:175
+  Scenario: Sync updates line number when tag moves within file
+    Given fts/login.ft has been synced with @ft:1
+    And   cmd/login_test.go contains "// @ft:1" on line 5
+    And   ft sync has been run to discover the link
+    When  the "// @ft:1" comment moves to line 10 in cmd/login_test.go
+    And   the user runs `ft sync`
+    Then  the test_links row for scenario_id 1 in cmd/login_test.go has line_number 10
+
+  @ft:176
+  Scenario: Sync skips non-test files
+    Given fts/login.ft has been synced with @ft:1
+    And   a file cmd/login.go exists with a comment "// @ft:1" on line 3
+    When  the user runs `ft sync`
+    Then  the test_links table has no rows for scenario_id 1
+
+  @ft:177
+  Scenario: Sync skips .git directory
+    Given fts/login.ft has been synced with @ft:1
+    And   a file .git/hooks/pre-commit_test.go exists with "// @ft:1" on line 1
+    When  the user runs `ft sync`
+    Then  the test_links table has no rows for scenario_id 1
+
+  @ft:178
+  Scenario: Sync ignores test link for unknown scenario ID
+    Given fts/login.ft has been synced with @ft:1
+    And   cmd/login_test.go contains "// @ft:999" on line 5
+    When  the user runs `ft sync`
+    Then  the test_links table has no rows for scenario_id 999
+
+  @ft:179
+  Scenario: ft tests lists linked test files
+    Given fts/login.ft has been synced with @ft:1
+    And   cmd/login_test.go is linked to @ft:1 at line 5
+    And   cmd/auth_test.go is linked to @ft:1 at line 10
+    When  the user runs `ft tests 1`
+    Then  the output contains "cmd/login_test.go:5"
+    And   the output contains "cmd/auth_test.go:10"
+
+  @ft:180
+  Scenario: ft tests accepts @ft: prefix
+    Given fts/login.ft has been synced with @ft:1
+    And   cmd/login_test.go is linked to @ft:1 at line 5
+    When  the user runs `ft tests @ft:1`
+    Then  the output contains "cmd/login_test.go:5"
+
+  @ft:181
+  Scenario: ft tests with no links shows message
+    Given fts/login.ft has been synced with @ft:1
+    And   no test files reference @ft:1
+    When  the user runs `ft tests 1`
+    Then  the output contains "no linked tests for @ft:1"
+
+  @ft:182
+  Scenario: ft show includes Tests section when links exist
+    Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
+    And   cmd/login_test.go is linked to @ft:1 at line 14
+    When  the user runs `ft show 1`
+    Then  the output contains "Tests:"
+    And   there is an empty line above the "Tests:" line
+    And   the output contains "cmd/login_test.go:14"
+    And   the Tests section appears after History and before the Gherkin content
+
+  @ft:183
+  Scenario: ft show omits Tests section when no links exist
+    Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
+    And   no test files reference @ft:1
+    When  the user runs `ft show 1`
+    Then  the output does not contain "Tests:"
+
+  @ft:184
+  Scenario: Sync only matches @ft tags in comments
+    Given fts/login.ft has been synced with @ft:1
+    And   cmd/login_test.go contains `@ft:1` inside a string literal, not a comment
+    When  the user runs `ft sync`
+    Then  the test_links table has no rows for scenario_id 1
+
+  @ft:185
+  Scenario: Sync only matches @ft comment directly above func Test
+    Given fts/login.ft has been synced with @ft:1
+    And   cmd/login_test.go has a "// @ft:1" comment not above a func Test line
+    When  the user runs `ft sync`
+    Then  the test_links table has no rows for scenario_id 1
+
+  @ft:186
+  Scenario: Sync ignores @ft tag inside raw string literal
+    Given fts/login.ft has been synced with @ft:1
+    And   cmd/login_test.go contains a backtick raw string with "// @ft:1" above "func Test"
+    When  the user runs `ft sync`
+    Then  the test_links table has no rows for scenario_id 1
+

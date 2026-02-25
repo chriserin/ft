@@ -168,6 +168,18 @@ func ShowHistoryHeader(w io.Writer, id int64, name string) {
 	fmt.Fprintf(w, "History: %s %s\n", idStyle.Render(fmt.Sprintf("@ft:%d", id)), name)
 }
 
+type TestLink struct {
+	FilePath   string
+	LineNumber int
+}
+
+func ShowTests(w io.Writer, links []TestLink) {
+	fmt.Fprintln(w, "Tests:")
+	for _, l := range links {
+		fmt.Fprintf(w, "  %s:%d\n", l.FilePath, l.LineNumber)
+	}
+}
+
 func SummaryLine(w io.Writer, fileCount, scenarioCount int) {
 	if scenarioCount > 0 {
 		fmt.Fprintf(w, "synced %d files, %d scenarios\n", fileCount, scenarioCount)

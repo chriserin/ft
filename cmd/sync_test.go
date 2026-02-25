@@ -186,7 +186,7 @@ func TestSync_FilesTableMigration(t *testing.T) {
 
 	var version int
 	require.NoError(t, sqlDB.QueryRow(`SELECT version FROM schema_version`).Scan(&version))
-	assert.Equal(t, 5, version)
+	assert.Equal(t, 6, version)
 }
 
 // Phase 3 tests
@@ -625,7 +625,7 @@ func TestSync_ScenariosTableMigration(t *testing.T) {
 
 	var version int
 	require.NoError(t, sqlDB.QueryRow(`SELECT version FROM schema_version`).Scan(&version))
-	assert.Equal(t, 5, version)
+	assert.Equal(t, 6, version)
 }
 
 // Phase 7 tests
@@ -1493,5 +1493,339 @@ func TestSync_NoStatusHistoryDoesNotGetModified(t *testing.T) {
 
 	var count int
 	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1`).Scan(&count))
+	assert.Equal(t, 0, count)
+}
+
+// @ft:171
+func TestSync_DiscoversTestLink(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+// @ft:1
+func TestLogin(t *testing.T) {}
+`), 0o644))
+
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var filePath string
+	var lineNumber int
+	require.NoError(t, sqlDB.QueryRow(`SELECT file_path, line_number FROM test_links WHERE scenario_id = 1`).Scan(&filePath, &lineNumber))
+	assert.Equal(t, "pkg/login_test.go", filePath)
+	assert.Equal(t, 2, lineNumber)
+}
+
+// this is a test
+// @ft:172 @ft:171 @ft:999
+func TestSync_DiscoversMultipleTestLinksInOneFile(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+// @ft:1
+func TestLogin(t *testing.T) {}
+// @ft:2
+func TestLoginFail(t *testing.T) {}
+`), 0o644))
+
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
+	assert.Equal(t, 2, count)
+}
+
+// @ft:173
+func TestSync_DiscoversTestLinkFromMultipleFiles(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.MkdirAll("cmd", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+// @ft:1
+func TestLogin(t *testing.T) {}
+`), 0o644))
+	require.NoError(t, os.WriteFile("cmd/login_test.go", []byte(`package cmd
+// @ft:1
+func TestLoginCmd(t *testing.T) {}
+`), 0o644))
+
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links WHERE scenario_id = 1`).Scan(&count))
+	assert.Equal(t, 2, count)
+}
+
+// @ft:174
+func TestSync_RemovesStaleTestLink(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+// @ft:1
+func TestLogin(t *testing.T) {}
+`), 0o644))
+	runSync(t)
+
+	// Remove the @ft tag from the test file
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+func TestLogin(t *testing.T) {}
+`), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
+	assert.Equal(t, 0, count)
+}
+
+// @ft:175
+func TestSync_UpdatesLineNumber(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+// @ft:1
+func TestLogin(t *testing.T) {}
+`), 0o644))
+	runSync(t)
+
+	// Move the tag to a different line
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+
+import "testing"
+
+// @ft:1
+func TestLogin(t *testing.T) {}
+`), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var lineNumber int
+	require.NoError(t, sqlDB.QueryRow(`SELECT line_number FROM test_links WHERE scenario_id = 1`).Scan(&lineNumber))
+	assert.Equal(t, 5, lineNumber)
+}
+
+// @ft:176
+func TestSync_SkipsNonTestFiles(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login.go", []byte(`package pkg
+// @ft:1
+func Login() {}
+`), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
+	assert.Equal(t, 0, count)
+}
+
+// @ft:177
+func TestSync_SkipsGitDirectory(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll(".git/hooks", 0o755))
+	require.NoError(t, os.WriteFile(".git/hooks/pre_commit_test.go", []byte(`package hooks
+// @ft:1
+func TestHook(t *testing.T) {}
+`), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
+	assert.Equal(t, 0, count)
+}
+
+// @ft:178
+func TestSync_IgnoresUnknownScenarioID(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+// @ft:999
+func TestLogin(t *testing.T) {}
+`), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
+	assert.Equal(t, 0, count)
+}
+
+// @ft:184
+func TestSync_OnlyMatchesTagsInComments(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+
+func TestLogin(t *testing.T) {
+	tag := "@ft:1"
+	_ = tag
+}
+`), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
+	assert.Equal(t, 0, count)
+}
+
+// @ft:185
+func TestSync_OnlyMatchesTagAboveFuncTest(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+
+// @ft:1
+var testData = "some data"
+
+func TestLogin(t *testing.T) {}
+`), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
+	assert.Equal(t, 0, count)
+}
+
+// @ft:186
+func TestSync_IgnoresTagInsideRawStringLiteral(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/setup_test.go", []byte("package pkg\n"+
+		"\n"+
+		"import (\n"+
+		"\t\"os\"\n"+
+		"\t\"testing\"\n"+
+		")\n"+
+		"\n"+
+		"func TestSetup(t *testing.T) {\n"+
+		"\tos.WriteFile(\"other_test.go\", []byte(`package other\n"+
+		"// @ft:1\n"+
+		"func TestOther(t *testing.T) {}\n"+
+		"`), 0o644)\n"+
+		"}\n",
+	), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
 	assert.Equal(t, 0, count)
 }

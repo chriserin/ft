@@ -28,6 +28,14 @@ var All = []string{
 	)`,
 	`ALTER TABLE scenarios ADD COLUMN content TEXT`,
 	`ALTER TABLE files ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT FALSE`,
+	`CREATE TABLE test_links (
+		id          INTEGER PRIMARY KEY,
+		scenario_id INTEGER NOT NULL REFERENCES scenarios(id),
+		file_path   TEXT NOT NULL,
+		line_number INTEGER NOT NULL,
+		updated_at  DATETIME NOT NULL DEFAULT (datetime('now')),
+		UNIQUE(scenario_id, file_path, line_number)
+	)`,
 }
 
 func Migrate(db *sql.DB) error {

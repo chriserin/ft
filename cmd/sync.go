@@ -3,7 +3,10 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
+	"go/scanner"
+	"go/token"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -382,6 +385,8 @@ func RunSync(w io.Writer) error {
 		}
 	}
 
+	syncTestLinks(sqlDB)
+
 	ui.SummaryLine(w, fileCount, scenarioCount)
 	return nil
 }
@@ -462,4 +467,115 @@ func writeErrorsToFile(path string, errors []parser.ParseError) error {
 		return err
 	}
 	return os.Rename(tmpPath, path)
+}
+
+var testLinkTagRe = regexp.MustCompile(`@ft:(\d+)`)
+
+type testLink struct {
+	scenarioID int64
+	filePath   string
+	lineNumber int
+}
+
+func scanTestLinksInFile(path string, src []byte) []testLink {
+	fset := token.NewFileSet()
+	var s scanner.Scanner
+	s.Init(fset.AddFile(path, fset.Base(), len(src)), src, nil, scanner.ScanComments)
+
+	// Collect comment positions that contain @ft:N
+	type commentTag struct {
+		line int
+		id   int64
+	}
+	var tags []commentTag
+
+	// Also collect func Test line numbers
+	funcLines := make(map[int]bool)
+
+	var prevTok token.Token
+	for {
+		pos, tok, lit := s.Scan()
+		if tok == token.EOF {
+			break
+		}
+		if tok == token.COMMENT {
+			m := testLinkTagRe.FindStringSubmatch(lit)
+			if m != nil {
+				id, err := strconv.ParseInt(m[1], 10, 64)
+				if err == nil {
+					tags = append(tags, commentTag{line: fset.Position(pos).Line, id: id})
+				}
+			}
+		}
+		// Detect "func Test..." — IDENT "Test*" preceded by FUNC keyword
+		if tok == token.IDENT && strings.HasPrefix(lit, "Test") && prevTok == token.FUNC {
+			funcLines[fset.Position(pos).Line] = true
+		}
+		prevTok = tok
+	}
+
+	// Keep only tags where the next non-blank source line is a func Test
+	srcLines := strings.Split(string(src), "\n")
+	var links []testLink
+	for _, tag := range tags {
+		isAboveTest := false
+		for j := tag.line; j < len(srcLines); j++ { // tag.line is 1-based, srcLines is 0-based, so j=tag.line is the next line
+			trimmed := strings.TrimSpace(srcLines[j])
+			if trimmed == "" {
+				continue
+			}
+			if funcLines[j+1] { // j is 0-based index, funcLines keys are 1-based
+				isAboveTest = true
+			}
+			break
+		}
+		if isAboveTest {
+			links = append(links, testLink{scenarioID: tag.id, filePath: path, lineNumber: tag.line})
+		}
+	}
+	return links
+}
+
+func syncTestLinks(sqlDB *sql.DB) {
+	var links []testLink
+
+	filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			base := filepath.Base(path)
+			if base == ".git" || base == "fts" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+
+		links = append(links, scanTestLinksInFile(path, data)...)
+		return nil
+	})
+
+	// Filter to only valid scenario IDs
+	var valid []testLink
+	for _, l := range links {
+		var exists int
+		if err := sqlDB.QueryRow(`SELECT 1 FROM scenarios WHERE id = ?`, l.scenarioID).Scan(&exists); err == nil {
+			valid = append(valid, l)
+		}
+	}
+
+	// Full reconciliation: delete all, re-insert
+	sqlDB.Exec(`DELETE FROM test_links`)
+	for _, l := range valid {
+		sqlDB.Exec(`INSERT INTO test_links (scenario_id, file_path, line_number) VALUES (?, ?, ?)`,
+			l.scenarioID, l.filePath, l.lineNumber)
+	}
 }

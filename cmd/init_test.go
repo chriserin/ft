@@ -29,6 +29,7 @@ func runInit(t *testing.T) string {
 	return buf.String()
 }
 
+// @ft:1
 func TestInit_CreatesFtsDirectory(t *testing.T) {
 	dir := inTempDir(t)
 	out := runInit(t)
@@ -87,7 +88,7 @@ func TestInit_AddsMigrationSystem(t *testing.T) {
 
 	var version int
 	require.NoError(t, sqlDB.QueryRow("SELECT version FROM schema_version").Scan(&version))
-	assert.Equal(t, 5, version)
+	assert.Equal(t, 6, version)
 }
 
 func TestInit_AddsToGitignore(t *testing.T) {

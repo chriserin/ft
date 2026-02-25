@@ -132,6 +132,23 @@ func RunShow(w io.Writer, rawID string) error {
 		ui.ShowHistory(w, history)
 	}
 
+	// Query test links
+	var testLinks []ui.TestLink
+	tlRows, err := sqlDB.Query(`SELECT file_path, line_number FROM test_links WHERE scenario_id = ? ORDER BY file_path, line_number`, id)
+	if err == nil {
+		defer tlRows.Close()
+		for tlRows.Next() {
+			var tl ui.TestLink
+			if err := tlRows.Scan(&tl.FilePath, &tl.LineNumber); err == nil {
+				testLinks = append(testLinks, tl)
+			}
+		}
+	}
+	if len(testLinks) > 0 {
+		fmt.Fprintln(w)
+		ui.ShowTests(w, testLinks)
+	}
+
 	// Print Background if present
 	if background != "" {
 		fmt.Fprintln(w)
