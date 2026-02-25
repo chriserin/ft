@@ -1469,3 +1469,29 @@ func TestSync_RestoredScenarioDoesNotGetModifiedStatus(t *testing.T) {
 	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'modified'`).Scan(&modifiedCount))
 	assert.Equal(t, 0, modifiedCount)
 }
+
+// @ft:165
+func TestSync_NoStatusHistoryDoesNotGetModified(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	// Change content without ever setting a status
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	updated := strings.Replace(string(data), "Given a user", "Given an admin", 1)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(updated), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1`).Scan(&count))
+	assert.Equal(t, 0, count)
+}

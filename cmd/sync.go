@@ -124,7 +124,7 @@ func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([
 						actions = append(actions, scenarioAction{kind: "new", id: tagID, name: ps.Name})
 					} else if nameChanged || contentChanged {
 						sqlDB.Exec(`UPDATE scenarios SET name = ?, content = ?, updated_at = datetime('now') WHERE id = ?`, ps.Name, ps.Content, tagID)
-						if contentChanged && scenarioLatestStatus(sqlDB, tagID) != "modified" {
+						if contentChanged && scenarioHasStatusHistory(sqlDB, tagID) && scenarioLatestStatus(sqlDB, tagID) != "modified" {
 							sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (?, 'modified')`, tagID)
 						}
 						actions = append(actions, scenarioAction{kind: "modified", id: tagID, name: ps.Name})
