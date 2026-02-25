@@ -26,6 +26,18 @@ Display scenario status inline next to `@ft:<id>` tags using extmarks.
 - Color via `Diagnostic*` highlight groups — works with any color scheme
 - Refresh on `BufEnter` and after status changes
 
+#### Status Highlight Groups
+
+| Status        | Highlight Group    | Typical Color |
+| ------------- | ------------------ | ------------- |
+| `accepted`    | `DiagnosticOk`     | green         |
+| `ready`       | `DiagnosticOk`     | green         |
+| `in-progress` | `DiagnosticWarn`   | yellow        |
+| `fulfilled`   | `DiagnosticWarn`   | yellow        |
+| `rejected`    | `DiagnosticError`  | red           |
+| `modified`    | `DiagnosticInfo`   | blue          |
+| (other)       | `Comment`          | gray          |
+
 ### Scenario Picker
 
 Browse, filter, and jump to scenarios via `:FtFind`.
@@ -91,8 +103,10 @@ require("ft").setup({
     hl = {                      -- status -> highlight group
       ["accepted"]    = "DiagnosticOk",
       ["in-progress"] = "DiagnosticWarn",
-      ["done"] = "DiagnosticWarn",
-      ["ready"]        = "DiagnosticOk",
+      ["fulfilled"]   = "DiagnosticWarn",
+      ["ready"]       = "DiagnosticOk",
+      ["rejected"]    = "DiagnosticError",
+      ["modified"]    = "DiagnosticInfo",
     },
     hl_default = "Comment",
     position = "eol",           -- "eol" or "right_align"

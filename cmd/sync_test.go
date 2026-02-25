@@ -1313,3 +1313,159 @@ func TestSync_RemovedScenarioReferencedByTagIsRestored(t *testing.T) {
 	assert.Contains(t, out, "+")
 	assert.Contains(t, out, "@ft:1 User logs in")
 }
+
+// @ft:155
+func TestSync_ContentChangeInsertsModifiedStatus(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Change the step content
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	updated := strings.Replace(string(data), "Given a user", "Given an admin", 1)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(updated), 0o644))
+
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var status string
+	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&status))
+	assert.Equal(t, "modified", status)
+}
+
+// @ft:156
+func TestSync_NameChangeDoesNotInsertModifiedStatus(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Change only the scenario name, not the steps
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	updated := strings.Replace(string(data), "User logs in", "User signs in", 1)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(updated), 0o644))
+
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var status string
+	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&status))
+	assert.Equal(t, "accepted", status)
+}
+
+// @ft:157
+func TestSync_RepeatedSyncDoesNotDuplicateModified(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Change content
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	updated := strings.Replace(string(data), "Given a user", "Given an admin", 1)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(updated), 0o644))
+
+	runSync(t)
+	runSync(t) // sync again without further edits
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'modified'`).Scan(&count))
+	assert.Equal(t, 1, count)
+}
+
+// @ft:160
+func TestSync_ContentChangeWhileAlreadyModifiedDoesNotDuplicate(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// First content change
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	updated := strings.Replace(string(data), "Given a user", "Given an admin", 1)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(updated), 0o644))
+	runSync(t)
+
+	// Second content change while already "modified"
+	data, err = os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	updated = strings.Replace(string(data), "Given an admin", "Given a superuser", 1)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(updated), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'modified'`).Scan(&count))
+	assert.Equal(t, 1, count)
+}
+
+// @ft:159
+func TestSync_RestoredScenarioDoesNotGetModifiedStatus(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Remove the scenario
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+`), 0o644))
+	runSync(t)
+
+	// Restore with different content
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  @ft:1
+  Scenario: User logs in
+    Given an admin
+`), 0o644))
+	runSync(t)
+
+	sqlDB, err := db.Open("fts/ft.db")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	var latestStatus string
+	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&latestStatus))
+	assert.Equal(t, "restored", latestStatus)
+
+	var modifiedCount int
+	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'modified'`).Scan(&modifiedCount))
+	assert.Equal(t, 0, modifiedCount)
+}

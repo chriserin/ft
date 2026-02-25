@@ -135,7 +135,22 @@ Integrate `ft` into Neovim (see design/NEOVIM.md).
 
 ---
 
-## Phase 9: `ft sync` — Test Link Discovery
+## Phase 9: `ft sync` — Modified Status
+
+Extend `ft sync` to automatically set a scenario's status to "modified" when its content changes (see design/MOD.md).
+
+- When content has changed during reconciliation, insert a `modified` status record
+- Name changes alone do not trigger `modified`
+- Skip if the scenario's latest status is already `modified`
+- Skip on restored scenarios (they already get a `restored` status)
+
+**Schema**: none — uses existing `statuses` table.
+
+**Testable**: change scenario steps, run `ft sync`, verify `modified` status inserted. Rename scenario without changing steps, verify no `modified` status.
+
+---
+
+## Phase 10: `ft sync` — Test Link Discovery
 
 Extend `ft sync` with test link scanning.
 
@@ -151,7 +166,7 @@ Extend `ft sync` with test link scanning.
 
 ---
 
-## Phase 10: File Recreation
+## Phase 11: File Recreation
 
 Recreate deleted files when accessing detached scenarios.
 
@@ -165,7 +180,7 @@ Recreate deleted files when accessing detached scenarios.
 
 ---
 
-## Phase 11: Daemon (`ftd`)
+## Phase 12: Daemon (`ftd`)
 
 Automate sync via file watching.
 

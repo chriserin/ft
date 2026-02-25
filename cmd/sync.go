@@ -73,13 +73,25 @@ func scenarioHasStatusHistory(sqlDB *sql.DB, scenarioID int64) bool {
 	return count > 0
 }
 
-func scenarioLatestStatusIsRemoved(sqlDB *sql.DB, scenarioID int64) bool {
+func stepsOf(content string) string {
+	_, after, found := strings.Cut(content, "\n")
+	if !found {
+		return ""
+	}
+	return after
+}
+
+func scenarioLatestStatus(sqlDB *sql.DB, scenarioID int64) string {
 	var status string
 	err := sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = ? ORDER BY id DESC LIMIT 1`, scenarioID).Scan(&status)
 	if err != nil {
-		return false
+		return ""
 	}
-	return status == "removed"
+	return status
+}
+
+func scenarioLatestStatusIsRemoved(sqlDB *sql.DB, scenarioID int64) bool {
+	return scenarioLatestStatus(sqlDB, scenarioID) == "removed"
 }
 
 func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([]scenarioAction, []tagInsertion) {
@@ -104,7 +116,7 @@ func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([
 					}
 
 					nameChanged := dbS.Name != ps.Name
-					contentChanged := dbS.Content.Valid && dbS.Content.String != ps.Content
+					contentChanged := dbS.Content.Valid && stepsOf(dbS.Content.String) != stepsOf(ps.Content)
 					firstPopulation := !dbS.Content.Valid
 
 					if wasRemoved {
@@ -112,6 +124,9 @@ func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([
 						actions = append(actions, scenarioAction{kind: "new", id: tagID, name: ps.Name})
 					} else if nameChanged || contentChanged {
 						sqlDB.Exec(`UPDATE scenarios SET name = ?, content = ?, updated_at = datetime('now') WHERE id = ?`, ps.Name, ps.Content, tagID)
+						if contentChanged && scenarioLatestStatus(sqlDB, tagID) != "modified" {
+							sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (?, 'modified')`, tagID)
+						}
 						actions = append(actions, scenarioAction{kind: "modified", id: tagID, name: ps.Name})
 					} else if firstPopulation {
 						// Silently populate content without marking as modified

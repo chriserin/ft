@@ -1,0 +1,52 @@
+Feature: Phase 9 Modified Status
+  When `ft sync` detects that a scenario's content has changed, it
+  automatically sets the scenario's status to "modified". Name changes
+  alone do not trigger a modified status. This signals to the team that
+  a scenario needs review after being edited.
+
+  Background:
+    Given the user has run `ft init`
+
+  @ft:155
+  Scenario: Sync sets modified status when content changes
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   scenario 1 has status "accepted"
+    When  the user changes the steps of scenario 1 in fts/login.ft
+    And   the user runs `ft sync` or triggers `ft sync`
+    Then  scenario 1 has status "modified"
+
+  @ft:156
+  Scenario: Sync does not set modified when the name and only the name changes
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   scenario 1 has status "accepted"
+    When  the user renames scenario 1 to "User signs in" without changing steps
+    And   the user runs `ft sync`
+    Then  scenario 1 still has status "accepted"
+
+  @ft:157
+  Scenario: Sync does not duplicate modified on repeated syncs
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   scenario 1 has status "accepted"
+    When  the user changes the steps of scenario 1 in fts/login.ft
+    And   the user runs `ft sync`
+    And   the user runs `ft sync` again without further edits
+    Then  scenario 1 has exactly one "modified" status record
+
+  @ft:160
+  Scenario: Sync does not duplicate modified when content changes again
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   scenario 1 has status "modified"
+    When  the user changes the steps of scenario 1 again
+    And   the user runs `ft sync`
+    Then  scenario 1 still has status "modified"
+    And   no additional "modified" status record is inserted
+
+  @ft:159
+  Scenario: Sync does not set modified on restored scenarios
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   scenario 1 has been removed
+    When  the user adds the scenario back to fts/login.ft with different content
+    And   the user runs `ft sync`
+    Then  scenario 1 has status "restored"
+    And   scenario 1 does not have a "modified" status record from this sync
+
