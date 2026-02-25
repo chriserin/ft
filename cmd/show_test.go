@@ -9,6 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func runShowHistory(t *testing.T, id string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	require.NoError(t, RunShowHistory(&buf, id))
+	return buf.String()
+}
+
 func runShow(t *testing.T, id string) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -171,4 +178,41 @@ func TestShow_IncludesBackgroundSection(t *testing.T) {
 	assert.Contains(t, out, "Background:")
 	assert.Contains(t, out, "Given a registered user")
 	assert.Contains(t, out, "User logs in")
+}
+
+func TestShow_HistoryFlag(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+	runStatusUpdate(t, "1", "in-progress")
+
+	out := runShowHistory(t, "1")
+
+	assert.Contains(t, out, "History:")
+	assert.Contains(t, out, "@ft:1")
+	assert.Contains(t, out, "User logs in")
+	assert.Contains(t, out, "in-progress")
+	assert.Contains(t, out, "accepted")
+	assert.NotContains(t, out, "Scenario:")
+}
+
+func TestShow_HistoryFlagNoStatus(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	out := runShowHistory(t, "1")
+
+	assert.Contains(t, out, "History:")
+	assert.Contains(t, out, "@ft:1")
+	assert.Contains(t, out, "no-activity")
 }

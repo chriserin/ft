@@ -108,3 +108,23 @@ Feature: Phase 5 ft show
     And   the output contains "Given a registered user"
     And   the output contains "Scenario: User logs in"
     And   the Background section appears before the Scenario section
+
+  @ft:162
+  Scenario: Show --history displays header and status records
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   the user has set scenario 1 to "accepted"
+    And   the user has set scenario 1 to "modified"
+    When  the user runs `ft show --history 1`
+    Then  the first line contains "History:" and "@ft:1" and "User logs in"
+    And   "modified" appears before "accepted" in the output
+    And   each row has a human readable timestamp in the local timezone
+    And   the output does not contain "Scenario:"
+
+  @ft:163
+  Scenario: Show --history with no status records shows no-activity
+    Given fts/login.ft has been synced with Scenario "User logs in"
+    And   no status has been set for the scenario
+    When  the user runs `ft show --history 1`
+    Then  the first line contains "History:" and "@ft:1" and "User logs in"
+    And   the second line contains "no-activity" and the scenario's created_at timestamp (human readable, local timezone)
+

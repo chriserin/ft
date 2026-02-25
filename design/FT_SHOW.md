@@ -55,6 +55,24 @@ The color applies to the keyword only, not the full line. Step keywords are colo
 
 If the scenario's file has been deleted, the file is recreated from stored content before displaying (see DESIGN.md).
 
+## `--history` Flag
+
+`ft show --history <id>` outputs only the history portion:
+
+```
+History: @ft:42 User logs in
+  modified     Feb 25, 2026 3:12pm
+  accepted     Feb 24, 2026 7:20pm
+  ready        Feb 23, 2026 10:17pm
+```
+
+- First line: `History: @ft:<id> <scenario name>`
+- Followed by status records, most recent first, with aligned timestamps
+- If no status history exists, outputs only the header line with no rows beneath it
+- Colors: `@ft:<id>` in blue, status values dim, timestamps dim
+
+Used by `ft.nvim` to display status history in a split without parsing the full `ft show` output.
+
 ## Errors
 
 - Unknown `<id>` — error message, no output

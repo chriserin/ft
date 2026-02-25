@@ -15,16 +15,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var showHistory bool
+
 var showCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show a scenario by ID",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if showHistory {
+			return RunShowHistory(cmd.OutOrStdout(), args[0])
+		}
 		return RunShow(cmd.OutOrStdout(), args[0])
 	},
 }
 
 func init() {
+	showCmd.Flags().BoolVar(&showHistory, "history", false, "Show only the status history")
 	rootCmd.AddCommand(showCmd)
 }
 
@@ -129,6 +135,58 @@ func RunShow(w io.Writer, rawID string) error {
 	// Print scenario content
 	fmt.Fprintln(w)
 	ui.ShowGherkin(w, matched.Content)
+
+	return nil
+}
+
+func RunShowHistory(w io.Writer, rawID string) error {
+	rawID = strings.TrimPrefix(rawID, "@ft:")
+	id, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid scenario ID: %s", rawID)
+	}
+
+	if _, err := os.Stat("fts"); os.IsNotExist(err) {
+		return fmt.Errorf("run `ft init` first")
+	}
+
+	sqlDB, err := db.Open("fts/ft.db")
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+	defer sqlDB.Close()
+
+	var scenarioID int64
+	var scenarioName string
+	var createdAt time.Time
+	err = sqlDB.QueryRow(`SELECT id, name, created_at FROM scenarios WHERE id = ?`, id).Scan(&scenarioID, &scenarioName, &createdAt)
+	if err != nil {
+		return fmt.Errorf("scenario %d not found", id)
+	}
+
+	histRows, err := sqlDB.Query(`SELECT status, changed_at FROM statuses WHERE scenario_id = ? ORDER BY changed_at DESC, id DESC`, id)
+	if err != nil {
+		return fmt.Errorf("querying status history: %w", err)
+	}
+	defer histRows.Close()
+
+	var history []ui.HistoryEntry
+	for histRows.Next() {
+		var s string
+		var changedAt time.Time
+		if err := histRows.Scan(&s, &changedAt); err != nil {
+			return fmt.Errorf("scanning history row: %w", err)
+		}
+		history = append(history, ui.HistoryEntry{Status: s, ChangedAt: changedAt})
+	}
+
+	ui.ShowHistoryHeader(w, scenarioID, scenarioName)
+
+	if len(history) == 0 {
+		history = append(history, ui.HistoryEntry{Status: "no-activity", ChangedAt: createdAt})
+	}
+
+	ui.ShowHistoryRows(w, history)
 
 	return nil
 }

@@ -197,6 +197,36 @@ Feature: Phase 8 Neovim Plugin
     Then  the quickfix list opens with two entries: @ft:1 and @ft:2
     And   @ft:3 is not included
 
+  @ft:166
+  Scenario: History keymap opens horizontal split with status history
+    Given fts/login.ft is open with @ft:1 having statuses "accepted" then "modified"
+    And   the cursor is inside the @ft:1 scenario block
+    When  the user presses gd
+    Then  a horizontal split opens with a scratch buffer
+    And   the first line contains "History:" and "@ft:1" and the scenario name
+    And   the status rows show "modified" before "accepted" with timestamps
+
+  @ft:167
+  Scenario: History keymap shows no-activity for scenario with no status
+    Given fts/login.ft is open with @ft:1 having no status history
+    And   the cursor is inside the @ft:1 scenario block
+    When  the user presses gd
+    Then  a horizontal split opens
+    And   the output contains "no-activity"
+
+  @ft:168
+  Scenario: History keymap notifies when no tag found
+    Given the cursor is in a file with no @ft tags
+    When  the user presses gd
+    Then  a vim.notify message tells the user to run :FtSync
+    And   no split is opened
+
+  @ft:169
+  Scenario: History split buffer is cleaned up on leave
+    Given the history split is open for @ft:1
+    When  the user closes the split or leaves the buffer
+    Then  the scratch buffer is deleted
+
   @ft:127
   Scenario: Virtual text updates after external status change
     Given fts/login.ft is open in Neovim with @ft:1 showing "accepted"

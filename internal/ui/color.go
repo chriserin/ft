@@ -144,6 +144,11 @@ func StatusConfirm(w io.Writer, id int64, prevStatus, status string) {
 }
 
 func ShowHistory(w io.Writer, entries []HistoryEntry) {
+	fmt.Fprintln(w, "History:")
+	ShowHistoryRows(w, entries)
+}
+
+func ShowHistoryRows(w io.Writer, entries []HistoryEntry) {
 	// Compute max status width for alignment
 	maxWidth := 0
 	for _, e := range entries {
@@ -152,12 +157,15 @@ func ShowHistory(w io.Writer, entries []HistoryEntry) {
 		}
 	}
 
-	fmt.Fprintln(w, "History:")
 	for _, e := range entries {
-		ts := e.ChangedAt.Format("Jan 2, 2006 3:04pm")
+		ts := e.ChangedAt.Local().Format("Jan 2, 2006 3:04pm")
 		padded := fmt.Sprintf("%-*s", maxWidth, e.Status)
 		fmt.Fprintf(w, "  %s  %s\n", trkStyle.Render(padded), trkStyle.Render(ts))
 	}
+}
+
+func ShowHistoryHeader(w io.Writer, id int64, name string) {
+	fmt.Fprintf(w, "History: %s %s\n", idStyle.Render(fmt.Sprintf("@ft:%d", id)), name)
 }
 
 func SummaryLine(w io.Writer, fileCount, scenarioCount int) {

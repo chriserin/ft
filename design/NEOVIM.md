@@ -65,6 +65,25 @@ Buffer-local key mappings in `.ft` files to set scenario status under the cursor
 - Notify confirmation, refresh virtual text
 - If no tag found, notify user to run `:FtSync`
 
+### Status History
+
+Show the status history of the scenario under the cursor in a vertical split.
+
+```
+History: @ft:1 User logs in
+  modified     Feb 25, 2026 3:12pm
+  accepted     Feb 24, 2026 7:20pm
+  ready        Feb 23, 2026 10:17pm
+```
+
+- Triggered by `gd` in `.ft` files (buffer-local keymap)
+- Find scenario under cursor using `find_scenario_at_cursor`
+- Call `ft show --history <id>` async
+- Open a vertical split with a scratch buffer (`buftype = "nofile"`, `modifiable = false`)
+- First line shows `History: @ft:<id> <scenario name>`, followed by the status history rows
+- Buffer is cleaned up with `BufLeave` autocmd — closing the split deletes the buffer
+- If no `@ft` tag found under cursor, notify user to run `:FtSync`
+
 ### User Commands
 
 | Command                   | Behavior                                                      |
