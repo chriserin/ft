@@ -21,6 +21,7 @@ func runSync(t *testing.T) string {
 	return buf.String()
 }
 
+// @ft:9
 func TestSync_RegisterNewFile(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -38,6 +39,7 @@ func TestSync_RegisterNewFile(t *testing.T) {
 	assert.Contains(t, out, "new  fts/login.ft")
 }
 
+// @ft:10
 func TestSync_RegisterMultipleFiles(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -57,6 +59,7 @@ func TestSync_RegisterMultipleFiles(t *testing.T) {
 	assert.Contains(t, out, "new  fts/checkout.ft")
 }
 
+// @ft:11
 func TestSync_ShowAlreadyTrackedFile(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -69,6 +72,7 @@ func TestSync_ShowAlreadyTrackedFile(t *testing.T) {
 	assert.Contains(t, out, "trk  fts/login.ft")
 }
 
+// @ft:12
 func TestSync_NoFtFiles(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -78,6 +82,7 @@ func TestSync_NoFtFiles(t *testing.T) {
 	assert.Contains(t, out, "synced 0 files")
 }
 
+// @ft:13
 func TestSync_FilesRecordStoresFilePath(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -94,6 +99,7 @@ func TestSync_FilesRecordStoresFilePath(t *testing.T) {
 	assert.Equal(t, "fts/login.ft", filePath)
 }
 
+// @ft:14
 func TestSync_FilesRecordStoresTimestamps(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -113,6 +119,7 @@ func TestSync_FilesRecordStoresTimestamps(t *testing.T) {
 	assert.NotEmpty(t, updatedAt)
 }
 
+// @ft:15
 func TestSync_NonFtFilesIgnored(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -133,6 +140,7 @@ func TestSync_NonFtFilesIgnored(t *testing.T) {
 	assert.Equal(t, 1, count)
 }
 
+// @ft:16
 func TestSync_IsIdempotent(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -151,6 +159,7 @@ func TestSync_IsIdempotent(t *testing.T) {
 	assert.Contains(t, out, "trk  fts/login.ft")
 }
 
+// @ft:17
 func TestSync_SummaryLine(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -161,6 +170,7 @@ func TestSync_SummaryLine(t *testing.T) {
 	assert.Contains(t, out, "synced 1 files")
 }
 
+// @ft:18
 func TestSync_WithoutInit(t *testing.T) {
 	inTempDir(t)
 
@@ -171,6 +181,7 @@ func TestSync_WithoutInit(t *testing.T) {
 	assert.Contains(t, err.Error(), "run `ft init` first")
 }
 
+// @ft:19
 func TestSync_FilesTableMigration(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -191,6 +202,7 @@ func TestSync_FilesTableMigration(t *testing.T) {
 
 // Phase 3 tests
 
+// @ft:20
 func TestSync_RegisterNewScenario(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -218,6 +230,7 @@ func TestSync_RegisterNewScenario(t *testing.T) {
 	assert.True(t, fileIdx < scenarioIdx, "file line should appear before scenario line")
 }
 
+// @ft:21
 func TestSync_RegisterMultipleScenariosFromOneFile(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -250,6 +263,7 @@ func TestSync_RegisterMultipleScenariosFromOneFile(t *testing.T) {
 	assert.Equal(t, "User fails login", name2)
 }
 
+// @ft:22
 func TestSync_WriteFtTagToFile(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -276,6 +290,7 @@ func TestSync_WriteFtTagToFile(t *testing.T) {
 	}
 }
 
+// @ft:23
 func TestSync_AlreadyTaggedScenarioIsSkipped(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -306,6 +321,7 @@ func TestSync_AlreadyTaggedScenarioIsSkipped(t *testing.T) {
 	assert.Equal(t, 1, count)
 }
 
+// @ft:24
 func TestSync_ScenarioRecordStoresMetadata(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -338,6 +354,7 @@ func TestSync_ScenarioRecordStoresMetadata(t *testing.T) {
 	assert.NotEmpty(t, updatedAt)
 }
 
+// @ft:25
 func TestSync_NewScenarioOutputMarker(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -351,6 +368,7 @@ func TestSync_NewScenarioOutputMarker(t *testing.T) {
 	assert.Contains(t, out, "@ft:1 User logs in")
 }
 
+// @ft:26
 func TestSync_ScenariosFromMultipleFiles(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -380,6 +398,7 @@ func TestSync_ScenariosFromMultipleFiles(t *testing.T) {
 	assert.Equal(t, "User completes purchase", name2)
 }
 
+// @ft:27
 func TestSync_RejectScenarioOutline(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -394,6 +413,7 @@ func TestSync_RejectScenarioOutline(t *testing.T) {
 	assert.Contains(t, out, "Scenario Outline is not supported")
 }
 
+// @ft:28
 func TestSync_RejectRule(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -408,6 +428,7 @@ func TestSync_RejectRule(t *testing.T) {
 	assert.Contains(t, out, "Rule is not supported")
 }
 
+// @ft:29
 func TestSync_RejectExamples(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -422,6 +443,7 @@ func TestSync_RejectExamples(t *testing.T) {
 	assert.Contains(t, out, "Examples is not supported")
 }
 
+// @ft:30
 func TestSync_ErrorCommentWrittenToFile(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -444,6 +466,7 @@ func TestSync_ErrorCommentWrittenToFile(t *testing.T) {
 	assert.Contains(t, lines[0], "5") // line number
 }
 
+// @ft:31
 func TestSync_FileWithErrorIsSkipped(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -466,6 +489,7 @@ func TestSync_FileWithErrorIsSkipped(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
+// @ft:32
 func TestSync_SummaryIncludesScenarioCount(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -482,6 +506,7 @@ func TestSync_SummaryIncludesScenarioCount(t *testing.T) {
 	assert.Contains(t, out, "synced 1 files, 2 scenarios")
 }
 
+// @ft:33
 func TestSync_ParseIsIdempotent(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -507,6 +532,7 @@ func TestSync_ParseIsIdempotent(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(string(data), "@ft:"))
 }
 
+// @ft:34
 func TestSync_BackgroundBlockRecognized(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -533,6 +559,7 @@ func TestSync_BackgroundBlockRecognized(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
+// @ft:35
 func TestSync_TaggedScenarioWithoutDBRecordGetsNewID(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -575,6 +602,7 @@ func TestSync_TaggedScenarioWithoutDBRecordGetsNewID(t *testing.T) {
 	assert.NotContains(t, content, "@ft:5")
 }
 
+// @ft:36
 func TestSync_NewFileStripsStaleTagsAndAssignsNewIDs(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -610,6 +638,7 @@ func TestSync_NewFileStripsStaleTagsAndAssignsNewIDs(t *testing.T) {
 	assert.Contains(t, out, "@ft:1 User logs in")
 }
 
+// @ft:37
 func TestSync_ScenariosTableMigration(t *testing.T) {
 	inTempDir(t)
 	runInit(t)

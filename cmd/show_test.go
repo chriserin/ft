@@ -23,6 +23,7 @@ func runShow(t *testing.T, id string) string {
 	return buf.String()
 }
 
+// @ft:47
 func TestShow_SingleScenario(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -38,6 +39,7 @@ func TestShow_SingleScenario(t *testing.T) {
 	assert.Contains(t, out, "User logs in")
 }
 
+// @ft:48
 func TestShow_DisplaysGherkinContent(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -56,6 +58,7 @@ func TestShow_DisplaysGherkinContent(t *testing.T) {
 	assert.Contains(t, out, "Then  the user sees the dashboard")
 }
 
+// @ft:49
 func TestShow_NoStatusShowsNoActivity(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -71,6 +74,7 @@ func TestShow_NoStatusShowsNoActivity(t *testing.T) {
 	assert.Contains(t, out, "no-activity")
 }
 
+// @ft:50
 func TestShow_UnknownIDReturnsError(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -82,6 +86,7 @@ func TestShow_UnknownIDReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "999")
 }
 
+// @ft:51
 func TestShow_AcceptsAtFtPrefix(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -97,6 +102,7 @@ func TestShow_AcceptsAtFtPrefix(t *testing.T) {
 	assert.Contains(t, out, "User logs in")
 }
 
+// @ft:52
 func TestShow_FileNameShowsBasename(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -112,6 +118,7 @@ func TestShow_FileNameShowsBasename(t *testing.T) {
 	assert.NotContains(t, out, "fts/login.ft")
 }
 
+// @ft:53
 func TestShow_RequiresInit(t *testing.T) {
 	inTempDir(t)
 
@@ -122,6 +129,7 @@ func TestShow_RequiresInit(t *testing.T) {
 	assert.Contains(t, err.Error(), "run `ft init` first")
 }
 
+// @ft:54
 func TestShow_NoArgumentReturnsError(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -133,6 +141,7 @@ func TestShow_NoArgumentReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid scenario ID")
 }
 
+// @ft:55
 func TestShow_ContentFromMultiScenarioFile(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -160,6 +169,7 @@ func TestShow_ContentFromMultiScenarioFile(t *testing.T) {
 	assert.NotContains(t, out2, "User logs in")
 }
 
+// @ft:56
 func TestShow_IncludesBackgroundSection(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -180,6 +190,7 @@ func TestShow_IncludesBackgroundSection(t *testing.T) {
 	assert.Contains(t, out, "User logs in")
 }
 
+// @ft:162
 func TestShow_HistoryFlag(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -201,6 +212,7 @@ func TestShow_HistoryFlag(t *testing.T) {
 	assert.NotContains(t, out, "Scenario:")
 }
 
+// @ft:163
 func TestShow_HistoryFlagNoStatus(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -255,6 +267,7 @@ func TestShow_OmitsTestsSectionWhenNoLinks(t *testing.T) {
 	assert.NotContains(t, out, "Tests:")
 }
 
+// @ft:170
 func TestShow_RemovedScenarioUsesStoredContent(t *testing.T) {
 	inTempDir(t)
 	runInit(t)

@@ -132,3 +132,39 @@ Feature: Phase 10 Test Links
     When  the user runs `ft sync`
     Then  the test_links table has no rows for scenario_id 1
 
+  @ft:187
+  Scenario: List filters to only tested scenarios
+    Given fts/login.ft has been synced with @ft:1 and @ft:2
+    And   cmd/login_test.go has a test linked to @ft:1
+    And   no test files reference @ft:2
+    When  the user runs `ft list tested`
+    Then  the output contains @ft:1
+    And   the output does not contain @ft:2
+
+  @ft:188
+  Scenario: List filters to only untested scenarios
+    Given fts/login.ft has been synced with @ft:1 and @ft:2
+    And   cmd/login_test.go has a test linked to @ft:1
+    And   no test files reference @ft:2
+    When  the user runs `ft list --not tested`
+    Then  the output contains @ft:2
+    And   the output does not contain @ft:1
+
+  @ft:189
+  Scenario: List combines tested filter with status filter
+    Given fts/login.ft has been synced with @ft:1, @ft:2, and @ft:3
+    And   @ft:1 has status "ready" and a linked test
+    And   @ft:2 has status "ready" and no linked tests
+    And   @ft:3 has status "accepted" and a linked test
+    When  the user runs `ft list ready --not tested`
+    Then  the output contains @ft:2
+    And   the output does not contain @ft:1
+    And   the output does not contain @ft:3
+
+  @ft:190
+  Scenario: List tested with no test links shows nothing
+    Given fts/login.ft has been synced with @ft:1
+    And   no test files reference @ft:1
+    When  the user runs `ft list tested`
+    Then  the output is empty
+

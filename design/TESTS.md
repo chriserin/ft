@@ -49,6 +49,31 @@ test_links
 ft tests <id>                  List tests linked to a scenario by its @ft:<id>
 ```
 
+## Filtering by test coverage
+
+`ft list` gains support for filtering scenarios by whether they have linked tests.
+
+```
+ft list tested                     List only scenarios that have at least one test link
+ft list --not tested               List only scenarios that have no test links
+```
+
+`tested` works like any other status filter and can be combined with real statuses:
+
+```
+ft list accepted tested            Accepted scenarios that have tests
+ft list ready --not tested         Ready scenarios missing tests
+```
+
+### Implementation
+
+`tested` is a virtual status. It does not exist in the `statuses` table. When `ft list` encounters `tested` in its include or exclude arguments, it applies it as a separate predicate after the status filter:
+
+- **include `tested`**: keep only rows where `scenario_id IN (SELECT scenario_id FROM test_links)`
+- **exclude `tested`** (via `--not tested`): keep only rows where `scenario_id NOT IN (SELECT scenario_id FROM test_links)`
+
+This can be done in the existing `matchesFilter` path or as a post-filter on the result set after querying, since the `test_links` table is already available.
+
 ## Daemon Behavior
 
 - Watches all non-ignored files for changes

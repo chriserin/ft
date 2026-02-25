@@ -17,6 +17,7 @@ func runList(t *testing.T, includes ...string) string {
 	return buf.String()
 }
 
+// @ft:38
 func TestList_SingleScenario(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -33,6 +34,7 @@ func TestList_SingleScenario(t *testing.T) {
 	assert.Contains(t, out, "User logs in")
 }
 
+// @ft:39
 func TestList_MultipleScenariosFromOneFile(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -51,6 +53,7 @@ func TestList_MultipleScenariosFromOneFile(t *testing.T) {
 	assert.Contains(t, out, "User fails login")
 }
 
+// @ft:40
 func TestList_ScenariosFromMultipleFiles(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -70,6 +73,7 @@ func TestList_ScenariosFromMultipleFiles(t *testing.T) {
 	assert.Contains(t, out, "checkout.ft")
 }
 
+// @ft:41
 func TestList_SortedByFilePathThenID(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -92,6 +96,7 @@ func TestList_SortedByFilePathThenID(t *testing.T) {
 	assert.True(t, checkoutIdx < loginIdx, "checkout.ft should appear before login.ft")
 }
 
+// @ft:42
 func TestList_NoStatusShowsNoActivity(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -106,6 +111,7 @@ func TestList_NoStatusShowsNoActivity(t *testing.T) {
 	assert.Contains(t, out, "no-activity")
 }
 
+// @ft:43
 func TestList_EmptyWhenNoScenarios(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -115,6 +121,7 @@ func TestList_EmptyWhenNoScenarios(t *testing.T) {
 	assert.Empty(t, out)
 }
 
+// @ft:44
 func TestList_ColumnsAligned(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -144,6 +151,7 @@ func TestList_ColumnsAligned(t *testing.T) {
 	}
 }
 
+// @ft:45
 func TestList_FileNameShowsBasename(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -159,6 +167,7 @@ func TestList_FileNameShowsBasename(t *testing.T) {
 	assert.NotContains(t, out, "fts/login.ft")
 }
 
+// @ft:147
 func TestList_FilterBySingleStatus(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -183,6 +192,7 @@ func TestList_FilterBySingleStatus(t *testing.T) {
 	assert.NotContains(t, out, "User resets password")
 }
 
+// @ft:148
 func TestList_FilterByNegatedStatus(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -210,6 +220,7 @@ func TestList_FilterByNegatedStatus(t *testing.T) {
 	assert.NotContains(t, out, "User resets password")
 }
 
+// @ft:149
 func TestList_FilterByMultiplePositiveStatuses(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -235,6 +246,7 @@ func TestList_FilterByMultiplePositiveStatuses(t *testing.T) {
 	assert.NotContains(t, out, "User resets password")
 }
 
+// @ft:150
 func TestList_FilterByMultipleNegatedStatuses(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -261,6 +273,7 @@ func TestList_FilterByMultipleNegatedStatuses(t *testing.T) {
 	assert.NotContains(t, out, "User resets password")
 }
 
+// @ft:151
 func TestList_FilterMixedPositiveAndNegated(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -287,6 +300,7 @@ func TestList_FilterMixedPositiveAndNegated(t *testing.T) {
 	assert.NotContains(t, out, "User resets password")
 }
 
+// @ft:152
 func TestList_FilterNoMatchesEmpty(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -302,6 +316,7 @@ func TestList_FilterNoMatchesEmpty(t *testing.T) {
 	assert.Empty(t, out)
 }
 
+// @ft:153
 func TestList_NoFilterShowsAll(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -326,6 +341,7 @@ func TestList_NoFilterShowsAll(t *testing.T) {
 	assert.Contains(t, out, "User resets password")
 }
 
+// @ft:46
 func TestList_RequiresInit(t *testing.T) {
 	inTempDir(t)
 
@@ -334,4 +350,99 @@ func TestList_RequiresInit(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "run `ft init` first")
+}
+
+// @ft:187
+func TestList_FilterTestedOnly(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte("package pkg\n// @ft:1\nfunc TestLogin(t *testing.T) {}\n"), 0o644))
+	runSync(t)
+
+	out := runList(t, "tested")
+
+	assert.Contains(t, out, "User logs in")
+	assert.NotContains(t, out, "User fails login")
+}
+
+// @ft:188
+func TestList_FilterNotTested(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte("package pkg\n// @ft:1\nfunc TestLogin(t *testing.T) {}\n"), 0o644))
+	runSync(t)
+
+	var buf bytes.Buffer
+	require.NoError(t, RunList(&buf, nil, []string{"tested"}))
+	out := buf.String()
+
+	assert.Contains(t, out, "User fails login")
+	assert.NotContains(t, out, "User logs in")
+}
+
+// @ft:189
+func TestList_TestedCombinedWithStatusFilter(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+
+  Scenario: User fails login
+    Given a user
+
+  Scenario: User resets password
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "ready")
+	runStatusUpdate(t, "2", "ready")
+	runStatusUpdate(t, "3", "accepted")
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte("package pkg\n// @ft:1\nfunc TestLogin(t *testing.T) {}\n// @ft:3\nfunc TestReset(t *testing.T) {}\n"), 0o644))
+	runSync(t)
+
+	var buf bytes.Buffer
+	require.NoError(t, RunList(&buf, []string{"ready"}, []string{"tested"}))
+	out := buf.String()
+
+	assert.Contains(t, out, "User fails login")
+	assert.NotContains(t, out, "User logs in")
+	assert.NotContains(t, out, "User resets password")
+}
+
+// @ft:190
+func TestList_TestedNoLinksShowsNothing(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	out := runList(t, "tested")
+
+	assert.Empty(t, out)
 }

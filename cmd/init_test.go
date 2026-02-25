@@ -40,6 +40,7 @@ func TestInit_CreatesFtsDirectory(t *testing.T) {
 	assert.Contains(t, out, "fts/ created")
 }
 
+// @ft:2
 func TestInit_FtsDirectoryAlreadyExists(t *testing.T) {
 	dir := inTempDir(t)
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "fts"), 0o755))
@@ -52,6 +53,7 @@ func TestInit_FtsDirectoryAlreadyExists(t *testing.T) {
 	assert.Contains(t, out, "fts/ already exists")
 }
 
+// @ft:3
 func TestInit_InitializesSQLiteDatabase(t *testing.T) {
 	dir := inTempDir(t)
 	out := runInit(t)
@@ -70,6 +72,7 @@ func TestInit_InitializesSQLiteDatabase(t *testing.T) {
 	assert.Contains(t, out, "fts/ft.db created")
 }
 
+// @ft:4
 func TestInit_DatabaseAlreadyExists(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -78,6 +81,7 @@ func TestInit_DatabaseAlreadyExists(t *testing.T) {
 	assert.Contains(t, out, "fts/ft.db already exists")
 }
 
+// @ft:5
 func TestInit_AddsMigrationSystem(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -91,6 +95,7 @@ func TestInit_AddsMigrationSystem(t *testing.T) {
 	assert.Equal(t, 6, version)
 }
 
+// @ft:6
 func TestInit_AddsToGitignore(t *testing.T) {
 	dir := inTempDir(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("node_modules\n"), 0o644))
@@ -104,6 +109,7 @@ func TestInit_AddsToGitignore(t *testing.T) {
 	assert.Contains(t, out, "fts/ft.db added to .gitignore")
 }
 
+// @ft:7
 func TestInit_GitignoreAlreadyHasEntry(t *testing.T) {
 	dir := inTempDir(t)
 	original := "node_modules\nfts/ft.db\n"
@@ -117,6 +123,7 @@ func TestInit_GitignoreAlreadyHasEntry(t *testing.T) {
 	assert.Contains(t, out, "fts/ft.db already in .gitignore")
 }
 
+// @ft:8
 func TestInit_NoGitignoreExists(t *testing.T) {
 	dir := inTempDir(t)
 	out := runInit(t)

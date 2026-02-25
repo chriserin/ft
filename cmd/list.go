@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"os"
@@ -25,7 +26,10 @@ Examples:
   ft list accepted ready               Show accepted and ready scenarios
   ft list --not removed                Show all except removed scenarios
   ft list ready --not no-activity      Show ready, excluding no-activity
-  ft list --not removed --not done     Exclude multiple statuses`,
+  ft list --not removed --not done     Exclude multiple statuses
+  ft list tested                       Show only scenarios with linked tests
+  ft list --not tested                 Show only scenarios without linked tests
+  ft list ready --not tested           Show ready scenarios missing tests`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return RunList(cmd.OutOrStdout(), args, notStatuses)
 	},
@@ -62,6 +66,25 @@ func matchesFilter(status string, includes []string, excludes []string) bool {
 	return false
 }
 
+func extractVirtual(filters []string, name string) ([]string, bool) {
+	var remaining []string
+	found := false
+	for _, f := range filters {
+		if f == name {
+			found = true
+		} else {
+			remaining = append(remaining, f)
+		}
+	}
+	return remaining, found
+}
+
+func isTested(sqlDB *sql.DB, scenarioID int64) bool {
+	var count int
+	err := sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links WHERE scenario_id = ?`, scenarioID).Scan(&count)
+	return err == nil && count > 0
+}
+
 func RunList(w io.Writer, includes []string, excludes []string) error {
 	if _, err := os.Stat("fts"); os.IsNotExist(err) {
 		return fmt.Errorf("run `ft init` first")
@@ -72,6 +95,10 @@ func RunList(w io.Writer, includes []string, excludes []string) error {
 		return fmt.Errorf("opening database: %w", err)
 	}
 	defer sqlDB.Close()
+
+	// Extract virtual "tested" filter
+	includes, requireTested := extractVirtual(includes, "tested")
+	excludes, excludeTested := extractVirtual(excludes, "tested")
 
 	rows, err := sqlDB.Query(`
 		SELECT s.id, f.file_path, s.name,
@@ -98,6 +125,13 @@ func RunList(w io.Writer, includes []string, excludes []string) error {
 		r.fileName = filepath.Base(filePath)
 
 		if (len(includes) > 0 || len(excludes) > 0) && !matchesFilter(r.status, includes, excludes) {
+			continue
+		}
+
+		if requireTested && !isTested(sqlDB, r.id) {
+			continue
+		}
+		if excludeTested && isTested(sqlDB, r.id) {
 			continue
 		}
 
