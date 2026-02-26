@@ -563,19 +563,35 @@ func syncTestLinks(sqlDB *sql.DB) {
 		return nil
 	})
 
-	// Filter to only valid scenario IDs
-	var valid []testLink
-	for _, l := range links {
-		var exists int
-		if err := sqlDB.QueryRow(`SELECT 1 FROM scenarios WHERE id = ?`, l.scenarioID).Scan(&exists); err == nil {
-			valid = append(valid, l)
+	// Load all valid scenario IDs in one query
+	validIDs := make(map[int64]bool)
+	rows, err := sqlDB.Query(`SELECT id FROM scenarios`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			if rows.Scan(&id) == nil {
+				validIDs[id] = true
+			}
 		}
 	}
 
-	// Full reconciliation: delete all, re-insert
-	sqlDB.Exec(`DELETE FROM test_links`)
-	for _, l := range valid {
-		sqlDB.Exec(`INSERT INTO test_links (scenario_id, file_path, line_number) VALUES (?, ?, ?)`,
-			l.scenarioID, l.filePath, l.lineNumber)
+	// Full reconciliation in a single transaction
+	tx, err := sqlDB.Begin()
+	if err != nil {
+		return
 	}
+	tx.Exec(`DELETE FROM test_links`)
+	stmt, err := tx.Prepare(`INSERT INTO test_links (scenario_id, file_path, line_number) VALUES (?, ?, ?)`)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+	defer stmt.Close()
+	for _, l := range links {
+		if validIDs[l.scenarioID] {
+			stmt.Exec(l.scenarioID, l.filePath, l.lineNumber)
+		}
+	}
+	tx.Commit()
 }
