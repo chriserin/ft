@@ -101,6 +101,167 @@ History: @ft:1 User logs in
 - `fts/` directory exists in the project root
 - `fts/ft.db` database exists
 
+### Test Navigation
+
+Jump between scenarios in `.ft` files and their linked tests in source code.
+
+#### Scenario → Test (`gt`)
+
+From a `.ft` file, jump to the test(s) linked to the scenario under the cursor.
+
+```
+  @ft:42
+  Scenario: User logs in       ← cursor here
+    Given a registered user
+    When  they log in
+    Then  they see the dashboard
+```
+
+- Triggered by `gt` in `.ft` files (buffer-local keymap)
+- Find scenario under cursor using `find_scenario_at_cursor`
+- Call `ft tests <id>` async
+- **One test:** jump directly to `file:line`
+- **Multiple tests:** populate quickfix list, open with `copen`
+- **No tests:** `vim.notify("no linked tests for @ft:<id>")`
+
+#### Test → Scenario (`gT`)
+
+From a test file, jump to the scenario referenced by the `@ft:<id>` tag near the cursor.
+
+```go
+// @ft:42                      ← cursor here or on next line
+func TestUserLogsIn(t *testing.T) {
+```
+
+- Triggered by `gT` in test files (buffer-local keymap, registered via autocommand on `BufEnter *_test.go`)
+- Scan the current line and the line above for `@ft:(\d+)`
+- Locate the `@ft:<id>` tag in the `fts/` directory using `vim.fn.search` across `.ft` files
+- Jump to the tag line in the `.ft` file
+
+#### CLI Integration
+
+New `cli.lua` function:
+
+```lua
+function M.tests(cwd, id, callback)
+  run({ "tests", tostring(id) }, cwd, callback)
+end
+```
+
+New `parse.lua` function to parse `ft tests` output:
+
+```lua
+function M.parse_tests_output(stdout)
+  local results = {}
+  for line in stdout:gmatch("[^\n]+") do
+    local file, lnum = line:match("^%s*(.+):(%d+)%s*$")
+    if file and lnum then
+      table.insert(results, { file = file, lnum = tonumber(lnum) })
+    end
+  end
+  return results
+end
+```
+
+#### Keymap Configuration
+
+```lua
+keymaps = {
+  mappings = {
+    ["gt"]         = "goto_test",       -- scenario → test (in .ft files)
+    ["gT"]         = "goto_scenario",   -- test → scenario (in test files)
+  },
+},
+```
+
+### Tested Virtual Text
+
+Display a `tested` indicator to the right of the status virtual text on `@ft:<id>` lines. Shows at a glance which scenarios have linked tests.
+
+```
+  @ft:1 accepted tested
+  Scenario: User logs in
+    Given a registered user
+
+  @ft:2 ready
+  Scenario: User fails login
+    Given a registered user
+```
+
+#### Implementation
+
+The extmark API supports multiple chunks in `virt_text`, each with its own highlight group:
+
+```lua
+virt_text = {
+  { " accepted", "DiagnosticOk" },
+  { " tested", "DiagnosticHint" },
+}
+```
+
+During `virtual_text.refresh()`:
+
+1. Fetch all scenarios with `cli.list(cwd, nil, ...)` — builds `status_map`
+2. Fetch tested scenarios with `cli.list(cwd, {"tested"}, ...)` — builds `tested_set`
+3. For each `@ft:<id>` tag in the buffer:
+   - Start `virt_text` with the status chunk: `{ " " .. status, hl }`
+   - If the ID is in `tested_set`, append: `{ " tested", tested_hl }`
+
+Both `cli.list` calls run in parallel (both use async `vim.system`). The extmarks are rendered once both callbacks have fired.
+
+#### Highlight Group
+
+| Indicator | Highlight Group   | Typical Color |
+| --------- | ----------------- | ------------- |
+| `tested`  | `DiagnosticHint`  | cyan/teal     |
+
+Added to the config:
+
+```lua
+virtual_text = {
+  tested_hl = "DiagnosticHint",    -- highlight for "tested" indicator
+},
+```
+
+#### Parallel Fetch Pattern
+
+```lua
+function M.refresh(bufnr)
+  local cwd = cli.find_root_for_buffer(bufnr)
+  if not cwd then return end
+
+  local status_map, tested_set
+  local pending = 2
+
+  local function try_render()
+    pending = pending - 1
+    if pending > 0 then return end
+    -- both calls complete — render extmarks
+    render(bufnr, status_map, tested_set)
+  end
+
+  cli.list(cwd, nil, function(err, scenarios)
+    status_map = {}
+    if not err and scenarios then
+      for _, s in ipairs(scenarios) do
+        status_map[s.id] = s.status
+      end
+    end
+    try_render()
+  end)
+
+  cli.list(cwd, { "tested" }, function(err, scenarios)
+    tested_set = {}
+    if not err and scenarios then
+      for _, s in ipairs(scenarios) do
+        tested_set[s.id] = true
+      end
+    end
+    try_render()
+  end)
+end
+```
+
 ### Autocommands
 
 Augroup `FtNvim`:
@@ -108,6 +269,7 @@ Augroup `FtNvim`:
 - `BufEnter *.ft` — run `ft sync`, reload buffer if changed, refresh virtual text
 - `BufWritePost *.ft` — run `ft sync`, reload buffer, refresh virtual text
 - `FileType ft` — register buffer-local status keymaps
+- `BufEnter *_test.go` — register buffer-local `gT` keymap for test → scenario navigation
 
 ---
 
@@ -128,6 +290,7 @@ require("ft").setup({
       ["modified"]    = "DiagnosticInfo",
     },
     hl_default = "Comment",
+    tested_hl = "DiagnosticHint",   -- highlight for "tested" indicator
     position = "eol",           -- "eol" or "right_align"
   },
 
@@ -137,6 +300,8 @@ require("ft").setup({
       ["<leader>tr"] = "ready",
       ["<leader>ta"] = "accepted",
       ["<leader>ff"] = "find",      -- open scenario picker
+      ["gt"]         = "goto_test",      -- scenario → linked test
+      ["gT"]         = "goto_scenario",  -- test → scenario definition
     },
   },
 
@@ -175,7 +340,7 @@ vim.system(cmd, { cwd = root, text = true }, callback)
 - Project root detected by walking up from buffer directory to find `fts/`
 - lipgloss automatically strips ANSI when stdout is not a TTY
 
-Exported functions: `list()`, `set_status()`, `sync()`, `find_root_for_buffer()`
+Exported functions: `list()`, `set_status()`, `sync()`, `tests()`, `find_root_for_buffer()`
 
 ## Parsing `ft list` Output
 

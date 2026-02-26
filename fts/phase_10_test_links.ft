@@ -72,27 +72,28 @@ Feature: Phase 10 Test Links
     Then  the test_links table has no rows for scenario_id 999
 
   @ft:179
-  Scenario: ft tests lists linked test files
+  Scenario: ft tests lists linked test files with function names
     Given fts/login.ft has been synced with @ft:1
-    And   cmd/login_test.go is linked to @ft:1 at line 5
-    And   cmd/auth_test.go is linked to @ft:1 at line 10
+    And   cmd/login_test.go has "// @ft:1" above "func TestLogin" at line 5
+    And   cmd/auth_test.go has "// @ft:1" above "func TestAuth" at line 10
     When  the user runs `ft tests 1`
-    Then  the output contains "cmd/login_test.go:5"
-    And   the output contains "cmd/auth_test.go:10"
+    Then  the output contains "cmd/login_test.go:5 TestLogin"
+    And   the output contains "cmd/auth_test.go:10 TestAuth"
 
   @ft:180
   Scenario: ft tests accepts @ft: prefix
     Given fts/login.ft has been synced with @ft:1
-    And   cmd/login_test.go is linked to @ft:1 at line 5
+    And   cmd/login_test.go has "// @ft:1" above "func TestLogin" at line 5
     When  the user runs `ft tests @ft:1`
-    Then  the output contains "cmd/login_test.go:5"
+    Then  the output contains "cmd/login_test.go:5 TestLogin"
 
   @ft:181
-  Scenario: ft tests with no links shows message
+  Scenario: ft tests with no links returns empty output
     Given fts/login.ft has been synced with @ft:1
     And   no test files reference @ft:1
     When  the user runs `ft tests 1`
-    Then  the output contains "no linked tests for @ft:1"
+    Then  the command exits with status 0
+    And   the output is empty
 
   @ft:182
   Scenario: ft show includes Tests section when links exist

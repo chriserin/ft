@@ -244,3 +244,73 @@ Feature: Phase 8 Neovim Plugin
     And   the buffer is reloaded with a new @ft:<id> tag above the new Scenario
     And   virtual text appears for the newly tagged scenario
 
+  @ft:191
+  Scenario: gt jumps to single linked test
+    Given fts/login.ft is open with @ft:1 for "User logs in"
+    And   cmd/login_test.go has a test linked to @ft:1 at line 14
+    And   the cursor is inside the @ft:1 scenario block
+    When  the user presses gt
+    Then  Neovim opens cmd/login_test.go at line 14
+
+  @ft:192
+  Scenario: gt opens quickfix when multiple tests linked
+    Given fts/login.ft is open with @ft:1 for "User logs in"
+    And   cmd/login_test.go is linked to @ft:1 at line 14
+    And   cmd/auth_test.go is linked to @ft:1 at line 8
+    And   the cursor is inside the @ft:1 scenario block
+    When  the user presses gt
+    Then  the quickfix list opens with two entries
+    And   one entry points to cmd/login_test.go:14 with the test function name as text
+    And   one entry points to cmd/auth_test.go:8 with the test function name as text
+
+  @ft:193
+  Scenario: gt notifies when no tests linked
+    Given fts/login.ft is open with @ft:1 for "User logs in"
+    And   no test files reference @ft:1
+    And   the cursor is inside the @ft:1 scenario block
+    When  the user presses gt
+    Then  a vim.notify message says "no linked tests for @ft:1"
+
+  @ft:194
+  Scenario: gT jumps from test to scenario definition
+    Given cmd/login_test.go is open with "// @ft:1" on line 5
+    And   fts/login.ft contains @ft:1 above "Scenario: User logs in"
+    When  the cursor is on line 5 of cmd/login_test.go
+    And   the user presses gT
+    Then  Neovim opens fts/login.ft and jumps to the @ft:1 line
+
+  @ft:195
+  Scenario: gT finds tag on the line above the cursor
+    Given cmd/login_test.go has "// @ft:1" on line 5 and "func TestLogin" on line 6
+    And   the cursor is on line 6
+    When  the user presses gT
+    Then  Neovim opens fts/login.ft and jumps to the @ft:1 line
+
+  @ft:196
+  Scenario: gT notifies when no tag found
+    Given cmd/login_test.go is open with no @ft tags near the cursor
+    When  the user presses gT
+    Then  a vim.notify message tells the user no @ft tag was found
+
+  @ft:197
+  Scenario: Virtual text shows tested indicator next to status
+    Given fts/login.ft has @ft:1 with status "accepted" and a linked test
+    And   fts/login.ft has @ft:2 with status "ready" and no linked tests
+    When  the user opens fts/login.ft in Neovim
+    Then  the @ft:1 line shows virtual text "accepted tested"
+    And   the @ft:2 line shows virtual text "ready" without "tested"
+
+  @ft:198
+  Scenario: Tested indicator uses DiagnosticHint highlight
+    Given fts/login.ft has @ft:1 with status "accepted" and a linked test
+    When  virtual text renders for @ft:1
+    Then  the "accepted" chunk uses its configured highlight group
+    And   the "tested" chunk uses the DiagnosticHint highlight group
+
+  @ft:199
+  Scenario: Tested virtual text refreshes after sync discovers new test link
+    Given fts/login.ft is open with @ft:1 showing "accepted" without "tested"
+    When  cmd/login_test.go is created with "// @ft:1" above a test function
+    And   ft sync runs
+    Then  the virtual text for @ft:1 updates to "accepted tested"
+

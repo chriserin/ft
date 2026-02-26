@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,7 @@ var testsCmd = &cobra.Command{
 	Short: "List test files linked to a scenario",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cmd.SilenceUsage = true
 		return RunTests(cmd.OutOrStdout(), args[0])
 	},
 }
@@ -53,20 +55,49 @@ func RunTests(w io.Writer, rawID string) error {
 	}
 	defer rows.Close()
 
-	var found bool
 	for rows.Next() {
 		var filePath string
 		var lineNumber int
 		if err := rows.Scan(&filePath, &lineNumber); err != nil {
 			continue
 		}
-		fmt.Fprintf(w, "  %s:%d\n", filePath, lineNumber)
-		found = true
-	}
-
-	if !found {
-		fmt.Fprintf(w, "no linked tests for @ft:%d\n", id)
+		name := testFuncName(filePath, lineNumber)
+		if name != "" {
+			fmt.Fprintf(w, "  %s:%d %s\n", filePath, lineNumber, name)
+		} else {
+			fmt.Fprintf(w, "  %s:%d\n", filePath, lineNumber)
+		}
 	}
 
 	return nil
+}
+
+func testFuncName(filePath string, commentLine int) string {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		if lineNum <= commentLine {
+			continue
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "func Test") {
+			name := strings.TrimPrefix(line, "func ")
+			if idx := strings.IndexByte(name, '('); idx != -1 {
+				name = name[:idx]
+			}
+			return name
+		}
+		return ""
+	}
+	return ""
 }

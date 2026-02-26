@@ -35,7 +35,7 @@ func TestLogin(t *testing.T) {}
 
 	out := runTests(t, "1")
 
-	assert.Contains(t, out, "pkg/login_test.go:2")
+	assert.Contains(t, out, "pkg/login_test.go:2 TestLogin")
 }
 
 // @ft:180
@@ -57,11 +57,11 @@ func TestLogin(t *testing.T) {}
 
 	out := runTests(t, "@ft:1")
 
-	assert.Contains(t, out, "pkg/login_test.go:2")
+	assert.Contains(t, out, "pkg/login_test.go:2 TestLogin")
 }
 
 // @ft:181
-func TestTests_NoLinksShowsMessage(t *testing.T) {
+func TestTests_NoLinksReturnsEmptyOutput(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
@@ -72,5 +72,5 @@ func TestTests_NoLinksShowsMessage(t *testing.T) {
 
 	out := runTests(t, "1")
 
-	assert.Contains(t, out, "no linked tests for @ft:1")
+	assert.Empty(t, out)
 }
