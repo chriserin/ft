@@ -67,3 +67,8 @@ Feature: Phase 1 Foundation
     And   the output contains ".gitignore created"
     And   the output contains "fts/ft.db added to .gitignore"
 
+  @ft:200
+  Scenario: Output the current version
+    When  the user runs `ft version`
+    Then  the output contains the current version number
+

@@ -13,7 +13,7 @@ VERSION_STRING=${VERSION#v}
 
 echo "Updating version to ${VERSION}..."
 
-VERSION_FILE=cmd/root.go
+VERSION_FILE=cmd/version.go
 
 sed -i "s/const Version = \".*\"/const Version = \"${VERSION_STRING}\"/" "$VERSION_FILE"
 
