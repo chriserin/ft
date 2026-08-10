@@ -32,6 +32,7 @@ func setupScenario(t *testing.T, content string) {
 }
 
 // @ft:57
+// @ft:204
 func TestStatus_SetScenarioStatus(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -41,6 +42,12 @@ func TestStatus_SetScenarioStatus(t *testing.T) {
 
 	fx := dbtest.Open(t, "fts/ft.db")
 	assert.Equal(t, "accepted", fx.Status(1))
+
+	statusesData, err := os.ReadFile("fts/statuses.csv")
+	require.NoError(t, err)
+	content := string(statusesData)
+	assert.Contains(t, content, "id,status,changed_at")
+	assert.Contains(t, content, "1,accepted,")
 }
 
 // @ft:58

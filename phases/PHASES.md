@@ -194,3 +194,21 @@ Automate sync via file watching.
 **Schema**: none — reuses all existing tables.
 
 **Testable**: start daemon, modify files, verify DB updates without manual sync.
+
+---
+
+## Phase 13: Statuses File
+
+Make status history survive a fresh clone, even though `fts/ft.db` is gitignored (see design/STATUSES_FILE.md).
+
+- Create `fts/statuses.csv` in `ft init` if it doesn't already exist — git-tracked, unlike `ft.db`, so it must not be added to `.gitignore`
+- `Store.InsertStatus` appends a CSV row (`id,status,changed_at`) whenever a status is recorded — manual (`ft status`), and `ft sync`'s automatic `modified` / `removed` / `restored` transitions — using a timestamp generated once in Go and shared between the DB insert and the file append
+- Fix `ft sync`'s new-file path: a scenario carrying an existing `@ft:<id>` tag is inserted with that explicit id instead of always getting a fresh one, *unless that id is already claimed by a different scenario in the DB* — in which case today's behavior (strip the tag, assign fresh) still applies, preserving the existing stale-tag protection (`@ft:36` in phase_3_parse_scenarios.ft; the unclaimed-tag counterpart is `@ft:208` in phase_13_statuses_file.ft) while enabling the post-clone case, where the DB is empty and every tag is by definition unclaimed
+- `ft sync` is what performs the rebuild, not `ft init` — `ft init` only creates `fts/statuses.csv`. `OpenProjectStore` already creates and migrates a fresh `ft.db` transparently if the file is missing, and the new-file-tag fix above already recreates every tagged scenario as an ordinary side effect of `ft sync`'s existing reconciliation — no separate "rebuild mode" is needed for that part
+- `ft sync` additionally checks, on every run, whether the `statuses` table is empty while `fts/statuses.csv` has rows — that combination only occurs right after a rebuild (a genuinely brand-new project has both empty), and signals that `statuses.csv` should be replayed into the `statuses` table
+- For status history whose id has no corresponding scenario anywhere on disk (removed from its file before the clone), the replay step skips that entry rather than reconstructing a placeholder — the row stays inert in `fts/statuses.csv` but that history is not recreated in the fresh DB. Acceptable since it only matters if `fts/ft.db` is lost, which is rare. The test-link scan then re-runs as usual to rebuild `test_links`
+- The same check also runs in reverse: `statuses` has rows but `fts/statuses.csv` is empty means an existing project is adopting this feature after already accumulating history — `ft sync` exports all of `statuses`, ordered by `changed_at`, into the file instead of replaying. Both directions are one-time: once the two have met, ordinary status writes keep them in lockstep
+
+**Schema**: none — `fts/statuses.csv` is a git-tracked file alongside `ft.db`, not a new table.
+
+**Testable**: run `ft status`, verify `fts/statuses.csv` gains a row. Delete `fts/ft.db` and rerun `ft sync` (not `ft init`), verify the DB and status history are rebuilt with the same ids and statuses as before.

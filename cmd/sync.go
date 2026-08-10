@@ -50,6 +50,27 @@ func stepsOf(content string) string {
 	return after
 }
 
+// insertOrAdoptScenario inserts a scenario belonging to a file not yet
+// tracked in the DB. If the scenario already carries an @ft:<id> tag and
+// that id isn't claimed by an existing scenario, it's adopted as-is — this
+// is what allows a rebuild (fts/ft.db deleted, then `ft sync`) to recreate
+// scenarios with their original ids instead of reassigning fresh ones. If
+// the id is already claimed by something else, or there's no tag at all,
+// a fresh id is assigned exactly as before.
+func insertOrAdoptScenario(store *db.Store, fileID int64, ps parser.ParsedScenario) (id int64, adopted bool, err error) {
+	if ps.FtTag != "" {
+		if tagID, parseErr := strconv.ParseInt(ps.FtTag, 10, 64); parseErr == nil && !store.ScenarioExists(tagID) {
+			if err := store.InsertScenarioWithID(tagID, fileID, ps.Name, ps.Content); err != nil {
+				return 0, false, err
+			}
+			return tagID, true, nil
+		}
+	}
+
+	id, err = store.InsertScenario(fileID, ps.Name, ps.Content)
+	return id, false, err
+}
+
 func reconcileTrackedFile(store *db.Store, fileID int64, pf *parser.ParsedFile) ([]scenarioAction, []tagInsertion, error) {
 	remaining, err := store.ScenariosByFile(fileID)
 	if err != nil {
@@ -244,11 +265,13 @@ func RunSync(w io.Writer) error {
 
 			var insertions []tagInsertion
 			for _, ps := range pf.Scenarios {
-				id, err := store.InsertScenario(fileID, ps.Name, ps.Content)
+				id, adopted, err := insertOrAdoptScenario(store, fileID, ps)
 				if err != nil {
 					return fmt.Errorf("inserting scenario %q: %w", ps.Name, err)
 				}
-				insertions = append(insertions, tagInsertion{line: ps.Line, id: id})
+				if !adopted {
+					insertions = append(insertions, tagInsertion{line: ps.Line, id: id})
+				}
 				ui.ScenarioLine(w, id, ps.Name)
 				scenarioCount++
 			}
@@ -326,6 +349,10 @@ func RunSync(w io.Writer) error {
 
 			store.MarkFileDeleted(f.ID)
 		}
+	}
+
+	if err := reconcileStatusesFile(store); err != nil {
+		return fmt.Errorf("reconciling statuses file: %w", err)
 	}
 
 	if err := syncTestLinks(store); err != nil {
@@ -479,6 +506,55 @@ func scanTestLinksInFile(path string, src []byte) []testLink {
 		}
 	}
 	return links
+}
+
+// reconcileStatusesFile keeps fts/statuses.csv and the statuses table in
+// sync in both directions, but only for the one-time "these two have never
+// met" cases — ordinary operation always writes both together via
+// Store.InsertStatus, so neither direction ever fires once a project is
+// caught up.
+//
+//   - DB empty, file has rows: fts/ft.db was deleted and recreated (a
+//     rebuild). Replay the file into the table. Entries whose scenario id has
+//     no matching row (removed from its file before the DB was lost) are
+//     skipped rather than reconstructed — see design/STATUSES_FILE.md.
+//   - DB has rows, file is empty: an existing project is adopting this
+//     feature for the first time — its history predates statuses.csv.
+//     Backfill the file from the table instead.
+//
+// A brand-new project has both empty, so this is a no-op on an ordinary
+// first sync too.
+func reconcileStatusesFile(store *db.Store) error {
+	dbCount, err := store.CountStatuses()
+	if err != nil {
+		return err
+	}
+
+	fileRows, err := db.ReadStatusesFile()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case dbCount == 0 && len(fileRows) > 0:
+		for _, row := range fileRows {
+			if !store.ScenarioExists(row.ScenarioID) {
+				continue
+			}
+			if err := store.InsertStatusAt(row.ScenarioID, row.Status, row.ChangedAt); err != nil {
+				return err
+			}
+		}
+	case dbCount > 0 && len(fileRows) == 0:
+		allRows, err := store.AllStatusesOrdered()
+		if err != nil {
+			return err
+		}
+		if err := db.WriteStatusesFile(allRows); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func syncTestLinks(store *db.Store) error {

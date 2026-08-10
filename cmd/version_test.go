@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// @ft:200
 func TestRunVersion(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, RunVersion(&buf))

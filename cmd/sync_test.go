@@ -494,9 +494,25 @@ func TestSync_TaggedScenarioWithoutDBRecordGetsNewID(t *testing.T) {
 }
 
 // @ft:36
-func TestSync_NewFileStripsStaleTagsAndAssignsNewIDs(t *testing.T) {
+func TestSync_NewFileWithClaimedTagStripsAndAssignsNewID(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
+
+	// Pre-claim id 99 with an unrelated scenario, so the tag in the new
+	// file below is stale, not a genuine rebuild tag. The claiming file
+	// must exist on disk too, or sync's deleted-file handling would treat
+	// it as removed before the collision check below even runs.
+	require.NoError(t, os.WriteFile("fts/other.ft", []byte(`Feature: Other
+  @ft:99
+  Scenario: Some other scenario
+    Given a user
+`), 0o644))
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	setupFx.InsertFile("fts/other.ft")
+	otherFileID := setupFx.FileID("fts/other.ft")
+	setupFx.InsertScenarioWithID(99, otherFileID, "Some other scenario")
+	setupFx.Close()
+
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
   @ft:99
   Scenario: User logs in
@@ -507,20 +523,65 @@ func TestSync_NewFileStripsStaleTagsAndAssignsNewIDs(t *testing.T) {
 
 	fx := dbtest.Open(t, "fts/ft.db")
 
-	// Should have a fresh ID (1), not the stale 99
-	assert.Equal(t, "User logs in", fx.ScenarioName(1))
+	// login.ft's scenario should get a fresh id, not steal 99
+	id, name := fx.ScenarioByName("User logs in")
+	assert.Equal(t, "User logs in", name)
+	assert.NotEqual(t, int64(99), id)
 
-	// Stale ID should not exist
-	assert.Equal(t, 0, fx.CountScenariosByID(99))
+	// id 99 still belongs to the original scenario, untouched
+	assert.Equal(t, "Some other scenario", fx.ScenarioName(99))
 
-	// File should have @ft:1, not @ft:99
+	// File should have the fresh tag, not @ft:99
 	data, err := os.ReadFile("fts/login.ft")
 	require.NoError(t, err)
 	content := string(data)
-	assert.Contains(t, content, "@ft:1")
-	assert.NotContains(t, content, "@ft:99")
+	assert.Contains(t, content, fmt.Sprintf("@ft:%d", id))
+	assert.NotContains(t, content, "@ft:99\n")
 
-	assert.Contains(t, out, "@ft:1 User logs in")
+	assert.Contains(t, out, "User logs in")
+}
+
+// @ft:208
+func TestSync_NewFileWithUnclaimedTagAdoptsID(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  @ft:42
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+
+	out := runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "User logs in", fx.ScenarioName(42))
+
+	// The tag should not have been rewritten
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "@ft:42")
+
+	assert.Contains(t, out, "@ft:42")
+}
+
+// @ft:209
+func TestSync_NewFileWithUntaggedScenarioGetsFreshID(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	id, name := fx.ScenarioByName("User logs in")
+	assert.Equal(t, "User logs in", name)
+
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	assert.Contains(t, string(data), fmt.Sprintf("@ft:%d", id))
 }
 
 // @ft:37
@@ -747,6 +808,7 @@ func TestSync_UnknownTagNoNameMatchIsNew(t *testing.T) {
 }
 
 // @ft:90
+// @ft:206
 func TestSync_RemovedScenarioWithHistoryGetsRemovedStatus(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -778,6 +840,11 @@ func TestSync_RemovedScenarioWithHistoryGetsRemovedStatus(t *testing.T) {
 
 	assert.Contains(t, out, "-")
 	assert.Contains(t, out, "User logs in")
+
+	// @ft:206: the removed status should be appended to the statuses file
+	statusesData, err := os.ReadFile("fts/statuses.csv")
+	require.NoError(t, err)
+	assert.Contains(t, string(statusesData), "1,removed,")
 }
 
 // @ft:91
@@ -870,6 +937,10 @@ func TestSync_DeletedFileWithHistoryPreservesScenario(t *testing.T) {
 
 	// "removed" status added
 	assert.Equal(t, "removed", fx.LatestStatusByID(1))
+
+	statusesData, err := os.ReadFile("fts/statuses.csv")
+	require.NoError(t, err)
+	assert.Contains(t, string(statusesData), "1,removed,")
 }
 
 // @ft:95
@@ -1082,6 +1153,7 @@ func TestSync_AlreadyRemovedScenarioNotReRemoved(t *testing.T) {
 }
 
 // @ft:107
+// @ft:207
 func TestSync_RemovedScenarioReferencedByTagIsRestored(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -1126,9 +1198,14 @@ func TestSync_RemovedScenarioReferencedByTagIsRestored(t *testing.T) {
 	// Output should show + indicator for restored scenario
 	assert.Contains(t, out, "+")
 	assert.Contains(t, out, "@ft:1 User logs in")
+
+	statusesData, err := os.ReadFile("fts/statuses.csv")
+	require.NoError(t, err)
+	assert.Contains(t, string(statusesData), "1,restored,")
 }
 
 // @ft:155
+// @ft:205
 func TestSync_ContentChangeInsertsModifiedStatus(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
@@ -1149,6 +1226,10 @@ func TestSync_ContentChangeInsertsModifiedStatus(t *testing.T) {
 
 	fx := dbtest.Open(t, "fts/ft.db")
 	assert.Equal(t, "modified", fx.LatestStatusByID(1))
+
+	statusesData, err := os.ReadFile("fts/statuses.csv")
+	require.NoError(t, err)
+	assert.Contains(t, string(statusesData), "1,modified,")
 }
 
 // @ft:156
@@ -1555,4 +1636,158 @@ func TestSync_IgnoresTagInsideRawStringLiteral(t *testing.T) {
 
 	fx := dbtest.Open(t, "fts/ft.db")
 	assert.Equal(t, 0, fx.CountTestLinks())
+}
+
+// Phase 13 tests
+
+// @ft:210
+func TestSync_RebuildRecreatesScenariosAfterDBDeleted(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.Remove("fts/ft.db"))
+
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "User logs in", fx.ScenarioName(1))
+}
+
+// @ft:211
+func TestSync_RebuildReplaysStatusHistory(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+	runStatusUpdate(t, "1", "in-progress")
+
+	statusesBefore, err := os.ReadFile("fts/statuses.csv")
+	require.NoError(t, err)
+
+	require.NoError(t, os.Remove("fts/ft.db"))
+
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 2, fx.CountStatuses(1))
+	assert.Equal(t, "in-progress", fx.LatestStatusByChangedAt(1))
+
+	// Replay must not re-append to the file it just read from
+	statusesAfter, err := os.ReadFile("fts/statuses.csv")
+	require.NoError(t, err)
+	assert.Equal(t, string(statusesBefore), string(statusesAfter))
+}
+
+// @ft:215
+func TestSync_BackfillsStatusesFileFromExistingDBHistory(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	// Simulate pre-existing history that predates the statuses file,
+	// inserted directly into the DB, bypassing Store.InsertStatus.
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	setupFx.InsertStatus(1, "accepted")
+	setupFx.Close()
+
+	// statuses.csv still only has its header — nothing has appended to it
+	before, err := os.ReadFile("fts/statuses.csv")
+	require.NoError(t, err)
+	require.Equal(t, "id,status,changed_at\n", string(before))
+
+	runSync(t)
+
+	data, err := os.ReadFile("fts/statuses.csv")
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "1,accepted,")
+}
+
+// @ft:212
+func TestSync_RebuildSkipsOrphanedStatusHistory(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Remove the scenario while it still has history — becomes "removed",
+	// with no tag left anywhere for a rebuild to reattach it to.
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.Remove("fts/ft.db"))
+
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountScenariosByID(1))
+	assert.Equal(t, 0, fx.CountStatuses(1))
+}
+
+// @ft:213
+func TestSync_RebuildRediscoversTestLinks(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	require.NoError(t, os.MkdirAll("pkg", 0o755))
+	require.NoError(t, os.WriteFile("pkg/login_test.go", []byte(`package pkg
+
+// @ft:1
+func TestLogin(t *testing.T) {}
+`), 0o644))
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	require.Equal(t, 1, fx.CountTestLinksForScenario(1))
+	fx.Close()
+
+	require.NoError(t, os.Remove("fts/ft.db"))
+
+	runSync(t)
+
+	fx2 := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx2.CountTestLinksForScenario(1))
+}
+
+// @ft:214
+func TestSync_DoesNotReplayWhenStatusesTableNotEmpty(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	before := fx.CountStatuses(1)
+	fx.Close()
+
+	runSync(t) // ordinary sync — fts/ft.db was not deleted
+
+	fx2 := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, before, fx2.CountStatuses(1))
 }

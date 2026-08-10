@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+// sqliteTimeLayout matches the textual format SQLite's own datetime('now')
+// produces, so timestamps generated in Go and stored via explicit parameters
+// round-trip identically to ones written via the column's SQL default.
+const sqliteTimeLayout = "2006-01-02 15:04:05"
+
 // Store wraps a *sql.DB and exposes the application's data-access operations,
 // keeping raw SQL out of the business logic in cmd.
 type Store struct {
@@ -163,10 +168,63 @@ func (s *Store) HasStatusHistory(scenarioID int64) bool {
 	return err == nil && count > 0
 }
 
-// InsertStatus records a new status for a scenario.
+// InsertStatus records a new status for a scenario and appends the same
+// event to the statuses file (see design/STATUSES_FILE.md).
 func (s *Store) InsertStatus(scenarioID int64, status string) error {
-	_, err := s.db.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (?, ?)`, scenarioID, status)
+	changedAt := time.Now().UTC().Format(sqliteTimeLayout)
+	if err := s.InsertStatusAt(scenarioID, status, changedAt); err != nil {
+		return err
+	}
+	return appendStatusRow(scenarioID, status, changedAt)
+}
+
+// InsertStatusAt records a status with an explicit changed_at, without
+// touching the statuses file. Used when replaying the statuses file itself
+// during a rebuild, so replay doesn't re-append what it just read.
+func (s *Store) InsertStatusAt(scenarioID int64, status, changedAt string) error {
+	_, err := s.db.Exec(`INSERT INTO statuses (scenario_id, status, changed_at) VALUES (?, ?, ?)`, scenarioID, status, changedAt)
 	return err
+}
+
+// CountStatuses returns the total number of status records in the database.
+func (s *Store) CountStatuses() (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM statuses`).Scan(&count)
+	return count, err
+}
+
+// AllStatusesOrdered returns every status record across all scenarios, in
+// chronological order. Used to backfill the statuses file the first time
+// it's created for a project that already has status history in the DB
+// (e.g. an existing project adopting this feature).
+//
+// changed_at is scanned into time.Time, not string: the sqlite driver
+// normalizes DATETIME columns to RFC3339 when scanning directly into a
+// string, which would produce timestamps in a different format than
+// InsertStatus writes (sqliteTimeLayout). Reformatting explicitly here keeps
+// backfilled rows visually consistent with rows written going forward.
+func (s *Store) AllStatusesOrdered() ([]StatusRow, error) {
+	rows, err := s.db.Query(`SELECT scenario_id, status, changed_at FROM statuses ORDER BY changed_at ASC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []StatusRow
+	for rows.Next() {
+		var scenarioID int64
+		var status string
+		var changedAt time.Time
+		if err := rows.Scan(&scenarioID, &status, &changedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, StatusRow{
+			ScenarioID: scenarioID,
+			Status:     status,
+			ChangedAt:  changedAt.UTC().Format(sqliteTimeLayout),
+		})
+	}
+	return result, rows.Err()
 }
 
 // StatusHistory returns all status entries for a scenario, most recent first.
@@ -277,6 +335,15 @@ func (s *Store) InsertScenario(fileID int64, name, content string) (int64, error
 		return 0, err
 	}
 	return result.LastInsertId()
+}
+
+// InsertScenarioWithID creates a new scenario using an explicit id, adopted
+// from an existing @ft:<id> tag on a scenario in a file not yet tracked in
+// the DB (e.g. after a rebuild). Callers must confirm via ScenarioExists that
+// the id isn't already claimed before calling this.
+func (s *Store) InsertScenarioWithID(id, fileID int64, name, content string) error {
+	_, err := s.db.Exec(`INSERT INTO scenarios (id, file_id, name, content) VALUES (?, ?, ?, ?)`, id, fileID, name, content)
+	return err
 }
 
 // DeleteScenario removes a scenario by ID.

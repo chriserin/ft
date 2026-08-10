@@ -124,3 +124,42 @@ func TestInit_NoGitignoreExists(t *testing.T) {
 	assert.Contains(t, out, ".gitignore created")
 	assert.Contains(t, out, "fts/ft.db added to .gitignore")
 }
+
+// @ft:201
+func TestInit_CreatesStatusesFile(t *testing.T) {
+	dir := inTempDir(t)
+	out := runInit(t)
+
+	data, err := os.ReadFile(filepath.Join(dir, "fts", "statuses.csv"))
+	require.NoError(t, err)
+	assert.Equal(t, "id,status,changed_at\n", string(data))
+	assert.Contains(t, out, "fts/statuses.csv created")
+}
+
+// @ft:202
+func TestInit_StatusesFileAlreadyExists(t *testing.T) {
+	dir := inTempDir(t)
+	runInit(t)
+
+	statusesPath := filepath.Join(dir, "fts", "statuses.csv")
+	require.NoError(t, os.WriteFile(statusesPath, []byte("id,status,changed_at\n1,accepted,2026-01-01 00:00:00\n"), 0o644))
+
+	out := runInit(t)
+
+	data, err := os.ReadFile(statusesPath)
+	require.NoError(t, err)
+	assert.Equal(t, "id,status,changed_at\n1,accepted,2026-01-01 00:00:00\n", string(data))
+	assert.Contains(t, out, "fts/statuses.csv already exists")
+}
+
+// @ft:203
+func TestInit_StatusesFileNotAddedToGitignore(t *testing.T) {
+	dir := inTempDir(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("node_modules\n"), 0o644))
+
+	runInit(t)
+
+	data, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "statuses.csv")
+}

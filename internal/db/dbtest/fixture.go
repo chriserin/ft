@@ -133,6 +133,14 @@ func (f *Fixture) InsertScenarioStub(fileID int64, name string) {
 	require.NoError(f.t, err)
 }
 
+// InsertScenarioWithID inserts a scenario using an explicit id, for tests
+// that need to pre-claim a specific id (e.g. simulating an id collision).
+func (f *Fixture) InsertScenarioWithID(id, fileID int64, name string) {
+	f.t.Helper()
+	_, err := f.sqlDB.Exec(`INSERT INTO scenarios (id, file_id, name) VALUES (?, ?, ?)`, id, fileID, name)
+	require.NoError(f.t, err)
+}
+
 // CountScenarios returns the total number of scenario records.
 func (f *Fixture) CountScenarios() int {
 	f.t.Helper()

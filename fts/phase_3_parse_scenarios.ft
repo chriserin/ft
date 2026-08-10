@@ -157,7 +157,7 @@ Feature: Phase 3 Parse Scenarios
     And   the stale @ft:5 tag is replaced with the new @ft tag in the file
 
   @ft:36
-  Scenario: New file strips stale tags and assigns new IDs
+  Scenario: New file with a tag already claimed by another scenario strips it and assigns a new ID
     Given the file fts/login.ft is NOT in the files table
     And   the file fts/login.ft contains:
       """
@@ -166,6 +166,7 @@ Feature: Phase 3 Parse Scenarios
         Scenario: User logs in
           Given a user
       """
+    And   a scenarios record already exists with id 99 belonging to a different scenario
     When  the user runs `ft sync`
     Then  the stale @ft:99 tag is stripped from the file
     And   a scenarios record is created with a fresh id and name "User logs in"

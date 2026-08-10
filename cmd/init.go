@@ -47,6 +47,17 @@ func RunInit(w io.Writer) error {
 		fmt.Fprintln(w, "fts/ft.db created")
 	}
 
+	// statuses file — git-tracked, unlike ft.db, so never added to .gitignore
+	statusesExists := db.StatusesFileExists()
+	if err := db.EnsureStatusesFile(); err != nil {
+		return fmt.Errorf("creating statuses file: %w", err)
+	}
+	if statusesExists {
+		fmt.Fprintln(w, "fts/statuses.csv already exists")
+	} else {
+		fmt.Fprintln(w, "fts/statuses.csv created")
+	}
+
 	// gitignore
 	msgs, err := ensureGitignore()
 	if err != nil {
