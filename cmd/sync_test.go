@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bytes"
-	"database/sql"
 	"fmt"
 	"os"
 	"strings"
@@ -11,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chriserin/ft/internal/db"
+	"github.com/chriserin/ft/internal/db/dbtest"
 )
 
 func runSync(t *testing.T) string {
@@ -29,13 +28,8 @@ func TestSync_RegisterNewFile(t *testing.T) {
 
 	out := runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var filePath string
-	require.NoError(t, sqlDB.QueryRow(`SELECT file_path FROM files WHERE file_path = ?`, "fts/login.ft").Scan(&filePath))
-	assert.Equal(t, "fts/login.ft", filePath)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "fts/login.ft", fx.FilePath("fts/login.ft"))
 	assert.Contains(t, out, "new  fts/login.ft")
 }
 
@@ -48,13 +42,8 @@ func TestSync_RegisterMultipleFiles(t *testing.T) {
 
 	out := runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM files`).Scan(&count))
-	assert.Equal(t, 2, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 2, fx.CountFiles())
 	assert.Contains(t, out, "new  fts/login.ft")
 	assert.Contains(t, out, "new  fts/checkout.ft")
 }
@@ -90,13 +79,8 @@ func TestSync_FilesRecordStoresFilePath(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var filePath string
-	require.NoError(t, sqlDB.QueryRow(`SELECT file_path FROM files WHERE file_path = ?`, "fts/login.ft").Scan(&filePath))
-	assert.Equal(t, "fts/login.ft", filePath)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "fts/login.ft", fx.FilePath("fts/login.ft"))
 }
 
 // @ft:14
@@ -107,14 +91,8 @@ func TestSync_FilesRecordStoresTimestamps(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var createdAt, updatedAt string
-	require.NoError(t, sqlDB.QueryRow(
-		`SELECT created_at, updated_at FROM files WHERE file_path = ?`, "fts/login.ft",
-	).Scan(&createdAt, &updatedAt))
+	fx := dbtest.Open(t, "fts/ft.db")
+	createdAt, updatedAt := fx.FileTimestamps("fts/login.ft")
 	assert.NotEmpty(t, createdAt)
 	assert.NotEmpty(t, updatedAt)
 }
@@ -128,16 +106,9 @@ func TestSync_NonFtFilesIgnored(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM files WHERE file_path = ?`, "fts/notes.txt").Scan(&count))
-	assert.Equal(t, 0, count)
-
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM files WHERE file_path = ?`, "fts/login.ft").Scan(&count))
-	assert.Equal(t, 1, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountFilesWithPath("fts/notes.txt"))
+	assert.Equal(t, 1, fx.CountFilesWithPath("fts/login.ft"))
 }
 
 // @ft:16
@@ -149,13 +120,8 @@ func TestSync_IsIdempotent(t *testing.T) {
 	runSync(t)
 	out := runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM files WHERE file_path = ?`, "fts/login.ft").Scan(&count))
-	assert.Equal(t, 1, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountFilesWithPath("fts/login.ft"))
 	assert.Contains(t, out, "trk  fts/login.ft")
 }
 
@@ -186,18 +152,9 @@ func TestSync_FilesTableMigration(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var name string
-	err = sqlDB.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='files'`).Scan(&name)
-	require.NoError(t, err)
-	assert.Equal(t, "files", name)
-
-	var version int
-	require.NoError(t, sqlDB.QueryRow(`SELECT version FROM schema_version`).Scan(&version))
-	assert.Equal(t, 6, version)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.True(t, fx.TableExists("files"))
+	assert.Equal(t, 6, fx.SchemaVersion())
 }
 
 // Phase 3 tests
@@ -213,13 +170,8 @@ func TestSync_RegisterNewScenario(t *testing.T) {
 
 	out := runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var name string
-	require.NoError(t, sqlDB.QueryRow(`SELECT name FROM scenarios WHERE name = ?`, "User logs in").Scan(&name))
-	assert.Equal(t, "User logs in", name)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountScenariosByName("User logs in"))
 	assert.Contains(t, out, "@ft:1 User logs in")
 
 	// File name should appear above the scenario line
@@ -248,19 +200,10 @@ func TestSync_RegisterMultipleScenariosFromOneFile(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios`).Scan(&count))
-	assert.Equal(t, 2, count)
-
-	var name1, name2 string
-	require.NoError(t, sqlDB.QueryRow(`SELECT name FROM scenarios WHERE id = 1`).Scan(&name1))
-	require.NoError(t, sqlDB.QueryRow(`SELECT name FROM scenarios WHERE id = 2`).Scan(&name2))
-	assert.Equal(t, "User logs in", name1)
-	assert.Equal(t, "User fails login", name2)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 2, fx.CountScenarios())
+	assert.Equal(t, "User logs in", fx.ScenarioName(1))
+	assert.Equal(t, "User fails login", fx.ScenarioName(2))
 }
 
 // @ft:22
@@ -296,13 +239,10 @@ func TestSync_AlreadyTaggedScenarioIsSkipped(t *testing.T) {
 	runInit(t)
 
 	// Pre-create the scenario in the DB
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	_, err = sqlDB.Exec(`INSERT INTO files (file_path) VALUES (?)`, "fts/login.ft")
-	require.NoError(t, err)
-	_, err = sqlDB.Exec(`INSERT INTO scenarios (file_id, name) VALUES (1, ?)`, "User logs in")
-	require.NoError(t, err)
-	sqlDB.Close()
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	setupFx.InsertFile("fts/login.ft")
+	setupFx.InsertScenarioStub(1, "User logs in")
+	setupFx.Close()
 
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
   @ft:1
@@ -312,13 +252,8 @@ func TestSync_AlreadyTaggedScenarioIsSkipped(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err = db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios`).Scan(&count))
-	assert.Equal(t, 1, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountScenarios())
 }
 
 // @ft:24
@@ -332,23 +267,13 @@ func TestSync_ScenarioRecordStoresMetadata(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var name string
-	var fileID int64
-	var createdAt, updatedAt string
-	require.NoError(t, sqlDB.QueryRow(
-		`SELECT name, file_id, created_at, updated_at FROM scenarios WHERE id = 1`,
-	).Scan(&name, &fileID, &createdAt, &updatedAt))
+	fx := dbtest.Open(t, "fts/ft.db")
+	name, fileID, createdAt, updatedAt := fx.ScenarioMeta(1)
 
 	assert.Equal(t, "User logs in", name)
 
 	// Verify file_id matches the files record for fts/login.ft
-	var filesFileID int64
-	require.NoError(t, sqlDB.QueryRow(`SELECT id FROM files WHERE file_path = ?`, "fts/login.ft").Scan(&filesFileID))
-	assert.Equal(t, filesFileID, fileID)
+	assert.Equal(t, fx.FileID("fts/login.ft"), fileID)
 
 	assert.NotEmpty(t, createdAt)
 	assert.NotEmpty(t, updatedAt)
@@ -383,19 +308,10 @@ func TestSync_ScenariosFromMultipleFiles(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios`).Scan(&count))
-	assert.Equal(t, 2, count)
-
-	var name1, name2 string
-	require.NoError(t, sqlDB.QueryRow(`SELECT name FROM scenarios WHERE name = ?`, "User logs in").Scan(&name1))
-	require.NoError(t, sqlDB.QueryRow(`SELECT name FROM scenarios WHERE name = ?`, "User completes purchase").Scan(&name2))
-	assert.Equal(t, "User logs in", name1)
-	assert.Equal(t, "User completes purchase", name2)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 2, fx.CountScenarios())
+	assert.Equal(t, 1, fx.CountScenariosByName("User logs in"))
+	assert.Equal(t, 1, fx.CountScenariosByName("User completes purchase"))
 }
 
 // @ft:27
@@ -480,13 +396,8 @@ func TestSync_FileWithErrorIsSkipped(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountScenarios())
 }
 
 // @ft:32
@@ -518,13 +429,8 @@ func TestSync_ParseIsIdempotent(t *testing.T) {
 	runSync(t)
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE name = ?`, "User logs in").Scan(&count))
-	assert.Equal(t, 1, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountScenariosByName("User logs in"))
 
 	// Check file has exactly one @ft tag
 	data, err := os.ReadFile("fts/login.ft")
@@ -547,16 +453,9 @@ func TestSync_BackgroundBlockRecognized(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE name = ?`, "User logs in").Scan(&count))
-	assert.Equal(t, 1, count)
-
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE name = ?`, "Background").Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountScenariosByName("User logs in"))
+	assert.Equal(t, 0, fx.CountScenariosByName("Background"))
 }
 
 // @ft:35
@@ -565,11 +464,9 @@ func TestSync_TaggedScenarioWithoutDBRecordGetsNewID(t *testing.T) {
 	runInit(t)
 
 	// Pre-create the file record so the file is tracked
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	_, err = sqlDB.Exec(`INSERT INTO files (file_path) VALUES (?)`, "fts/login.ft")
-	require.NoError(t, err)
-	sqlDB.Close()
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	setupFx.InsertFile("fts/login.ft")
+	setupFx.Close()
 
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
   @ft:5
@@ -579,20 +476,14 @@ func TestSync_TaggedScenarioWithoutDBRecordGetsNewID(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err = db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
+	fx := dbtest.Open(t, "fts/ft.db")
 
 	// Should have a record with name "User logs in" (any id)
-	var id int
-	var name string
-	require.NoError(t, sqlDB.QueryRow(`SELECT id, name FROM scenarios WHERE name = ?`, "User logs in").Scan(&id, &name))
+	id, name := fx.ScenarioByName("User logs in")
 	assert.Equal(t, "User logs in", name)
 
 	// Stale ID 5 should not be used
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE id = 5`).Scan(&count))
-	assert.Equal(t, 0, count)
+	assert.Equal(t, 0, fx.CountScenariosByID(5))
 
 	// File should contain the new @ft:<id> tag, not @ft:5
 	data, err := os.ReadFile("fts/login.ft")
@@ -614,19 +505,13 @@ func TestSync_NewFileStripsStaleTagsAndAssignsNewIDs(t *testing.T) {
 
 	out := runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
+	fx := dbtest.Open(t, "fts/ft.db")
 
 	// Should have a fresh ID (1), not the stale 99
-	var name string
-	require.NoError(t, sqlDB.QueryRow(`SELECT name FROM scenarios WHERE id = 1`).Scan(&name))
-	assert.Equal(t, "User logs in", name)
+	assert.Equal(t, "User logs in", fx.ScenarioName(1))
 
 	// Stale ID should not exist
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE id = 99`).Scan(&count))
-	assert.Equal(t, 0, count)
+	assert.Equal(t, 0, fx.CountScenariosByID(99))
 
 	// File should have @ft:1, not @ft:99
 	data, err := os.ReadFile("fts/login.ft")
@@ -643,18 +528,9 @@ func TestSync_ScenariosTableMigration(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var name string
-	err = sqlDB.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='scenarios'`).Scan(&name)
-	require.NoError(t, err)
-	assert.Equal(t, "scenarios", name)
-
-	var version int
-	require.NoError(t, sqlDB.QueryRow(`SELECT version FROM schema_version`).Scan(&version))
-	assert.Equal(t, 6, version)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.True(t, fx.TableExists("scenarios"))
+	assert.Equal(t, 6, fx.SchemaVersion())
 }
 
 // Phase 7 tests
@@ -678,13 +554,8 @@ func TestSync_UpdateScenarioNameWhenTagMatches(t *testing.T) {
 
 	out := runSync(t) // second sync
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var name string
-	require.NoError(t, sqlDB.QueryRow(`SELECT name FROM scenarios WHERE id = 1`).Scan(&name))
-	assert.Equal(t, "User signs in", name)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "User signs in", fx.ScenarioName(1))
 	assert.Contains(t, out, "~")
 	assert.Contains(t, out, "User signs in")
 }
@@ -701,11 +572,9 @@ func TestSync_UpdateScenarioContentWhenTagMatches(t *testing.T) {
 	runSync(t)
 
 	// Get original updated_at
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	var origUpdatedAt string
-	require.NoError(t, sqlDB.QueryRow(`SELECT updated_at FROM scenarios WHERE id = 1`).Scan(&origUpdatedAt))
-	sqlDB.Close()
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	_ = setupFx.ScenarioUpdatedAt(1)
+	setupFx.Close()
 
 	// Change step content
 	data, err := os.ReadFile("fts/login.ft")
@@ -715,13 +584,8 @@ func TestSync_UpdateScenarioContentWhenTagMatches(t *testing.T) {
 
 	out := runSync(t)
 
-	sqlDB, err = db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var content string
-	require.NoError(t, sqlDB.QueryRow(`SELECT content FROM scenarios WHERE id = 1`).Scan(&content))
-	assert.Contains(t, content, "Given an admin")
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Contains(t, fx.ScenarioContent(1).String, "Given an admin")
 	assert.Contains(t, out, "~")
 }
 
@@ -787,13 +651,8 @@ func TestSync_UntaggedScenarioFallsBackToNameMatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "@ft:1")
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios`).Scan(&count))
-	assert.Equal(t, 1, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountScenarios())
 
 	assert.Contains(t, out, "mod  fts/login.ft")
 }
@@ -820,13 +679,8 @@ func TestSync_UntaggedScenarioNoNameMatchIsNew(t *testing.T) {
 
 	out := runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios`).Scan(&count))
-	assert.Equal(t, 2, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 2, fx.CountScenarios())
 
 	assert.Contains(t, out, "+")
 	assert.Contains(t, out, "User resets password")
@@ -858,13 +712,8 @@ func TestSync_UnknownTagFallsBackToNameMatch(t *testing.T) {
 	assert.Contains(t, string(data), "@ft:1")
 	assert.NotContains(t, string(data), "@ft:999")
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios`).Scan(&count))
-	assert.Equal(t, 1, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountScenarios())
 }
 
 // @ft:89
@@ -909,11 +758,9 @@ func TestSync_RemovedScenarioWithHistoryGetsRemovedStatus(t *testing.T) {
 	runSync(t)
 
 	// Add a status to the scenario
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	_, err = sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (1, 'pass')`)
-	require.NoError(t, err)
-	sqlDB.Close()
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	setupFx.InsertStatus(1, "pass")
+	setupFx.Close()
 
 	// Remove the scenario from the file
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
@@ -921,19 +768,13 @@ func TestSync_RemovedScenarioWithHistoryGetsRemovedStatus(t *testing.T) {
 
 	out := runSync(t)
 
-	sqlDB, err = db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
+	fx := dbtest.Open(t, "fts/ft.db")
 
 	// Scenario should still exist
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE id = 1`).Scan(&count))
-	assert.Equal(t, 1, count)
+	assert.Equal(t, 1, fx.CountScenariosByID(1))
 
 	// Should have a "removed" status
-	var status string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&status))
-	assert.Equal(t, "removed", status)
+	assert.Equal(t, "removed", fx.LatestStatusByID(1))
 
 	assert.Contains(t, out, "-")
 	assert.Contains(t, out, "User logs in")
@@ -956,13 +797,8 @@ func TestSync_RemovedScenarioNoHistoryIsDeleted(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE id = 1`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountScenariosByID(1))
 }
 
 // @ft:92
@@ -999,18 +835,11 @@ func TestSync_DeletedFileMarkedInDatabase(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var deleted bool
-	require.NoError(t, sqlDB.QueryRow(`SELECT deleted FROM files WHERE file_path = ?`, "fts/login.ft").Scan(&deleted))
-	assert.True(t, deleted)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.True(t, fx.FileDeleted("fts/login.ft"))
 
 	// Scenario should be deleted (no history)
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE id = 1`).Scan(&count))
-	assert.Equal(t, 0, count)
+	assert.Equal(t, 0, fx.CountScenariosByID(1))
 }
 
 // @ft:94
@@ -1025,33 +854,22 @@ func TestSync_DeletedFileWithHistoryPreservesScenario(t *testing.T) {
 	runSync(t)
 
 	// Add status history
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	_, err = sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (1, 'pass')`)
-	require.NoError(t, err)
-	sqlDB.Close()
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	setupFx.InsertStatus(1, "pass")
+	setupFx.Close()
 
 	require.NoError(t, os.Remove("fts/login.ft"))
 
 	runSync(t)
 
-	sqlDB, err = db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var deleted bool
-	require.NoError(t, sqlDB.QueryRow(`SELECT deleted FROM files WHERE file_path = ?`, "fts/login.ft").Scan(&deleted))
-	assert.True(t, deleted)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.True(t, fx.FileDeleted("fts/login.ft"))
 
 	// Scenario preserved
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE id = 1`).Scan(&count))
-	assert.Equal(t, 1, count)
+	assert.Equal(t, 1, fx.CountScenariosByID(1))
 
 	// "removed" status added
-	var status string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&status))
-	assert.Equal(t, "removed", status)
+	assert.Equal(t, "removed", fx.LatestStatusByID(1))
 }
 
 // @ft:95
@@ -1066,11 +884,9 @@ func TestSync_AlreadyDeletedFileSkipped(t *testing.T) {
 	runSync(t)
 
 	// Mark file as deleted in DB
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	_, err = sqlDB.Exec(`UPDATE files SET deleted = TRUE WHERE file_path = ?`, "fts/login.ft")
-	require.NoError(t, err)
-	sqlDB.Close()
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	setupFx.MarkFileDeletedByPath("fts/login.ft")
+	setupFx.Close()
 
 	// Remove the file
 	require.NoError(t, os.Remove("fts/login.ft"))
@@ -1092,12 +908,8 @@ func TestSync_ContentStoredOnSync(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var content sql.NullString
-	require.NoError(t, sqlDB.QueryRow(`SELECT content FROM scenarios WHERE id = 1`).Scan(&content))
+	fx := dbtest.Open(t, "fts/ft.db")
+	content := fx.ScenarioContent(1)
 	assert.True(t, content.Valid)
 	assert.NotEmpty(t, content.String)
 }
@@ -1121,13 +933,8 @@ func TestSync_ContentUpdatedOnChange(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var content string
-	require.NoError(t, sqlDB.QueryRow(`SELECT content FROM scenarios WHERE id = 1`).Scan(&content))
-	assert.Contains(t, content, "Given an admin")
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Contains(t, fx.ScenarioContent(1).String, "Given an admin")
 }
 
 // @ft:100
@@ -1223,11 +1030,9 @@ func TestSync_ChangeDetectionIsIdempotent(t *testing.T) {
 	dataBefore, err := os.ReadFile("fts/login.ft")
 	require.NoError(t, err)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	var updatedAtBefore string
-	require.NoError(t, sqlDB.QueryRow(`SELECT updated_at FROM scenarios WHERE id = 1`).Scan(&updatedAtBefore))
-	sqlDB.Close()
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	_ = setupFx.ScenarioUpdatedAt(1)
+	setupFx.Close()
 
 	out := runSync(t) // third sync
 
@@ -1253,11 +1058,9 @@ func TestSync_AlreadyRemovedScenarioNotReRemoved(t *testing.T) {
 	runSync(t)
 
 	// Add status history so the scenario is preserved on removal
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	_, err = sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (1, 'pass')`)
-	require.NoError(t, err)
-	sqlDB.Close()
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	setupFx.InsertStatus(1, "pass")
+	setupFx.Close()
 
 	// Remove the scenario from the file
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
@@ -1265,22 +1068,14 @@ func TestSync_AlreadyRemovedScenarioNotReRemoved(t *testing.T) {
 
 	runSync(t) // first sync after removal — adds "removed" status
 
-	sqlDB, err = db.Open("fts/ft.db")
-	require.NoError(t, err)
-	var countAfterFirst int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'removed'`).Scan(&countAfterFirst))
-	assert.Equal(t, 1, countAfterFirst)
-	sqlDB.Close()
+	checkFx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, checkFx.CountStatusesByStatus(1, "removed"))
+	checkFx.Close()
 
 	out := runSync(t) // second sync after removal — should NOT add another "removed"
 
-	sqlDB, err = db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var countAfterSecond int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'removed'`).Scan(&countAfterSecond))
-	assert.Equal(t, 1, countAfterSecond, "should not add duplicate removed status")
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountStatusesByStatus(1, "removed"), "should not add duplicate removed status")
 
 	// Should not show the removed scenario in output again
 	assert.NotContains(t, out, "User logs in")
@@ -1298,11 +1093,9 @@ func TestSync_RemovedScenarioReferencedByTagIsRestored(t *testing.T) {
 	runSync(t)
 
 	// Add status history so the scenario is preserved on removal
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	_, err = sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (1, 'pass')`)
-	require.NoError(t, err)
-	sqlDB.Close()
+	setupFx := dbtest.Open(t, "fts/ft.db")
+	setupFx.InsertStatus(1, "pass")
+	setupFx.Close()
 
 	// Remove the scenario from the file
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
@@ -1319,24 +1112,16 @@ func TestSync_RemovedScenarioReferencedByTagIsRestored(t *testing.T) {
 
 	out := runSync(t)
 
-	sqlDB, err = db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
+	fx := dbtest.Open(t, "fts/ft.db")
 
 	// Scenario should still exist
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios WHERE id = 1`).Scan(&count))
-	assert.Equal(t, 1, count)
+	assert.Equal(t, 1, fx.CountScenariosByID(1))
 
 	// Should have a "restored" status as the latest
-	var latestStatus string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&latestStatus))
-	assert.Equal(t, "restored", latestStatus)
+	assert.Equal(t, "restored", fx.LatestStatusByID(1))
 
 	// Should only have one "removed" status (not re-removed)
-	var removedCount int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'removed'`).Scan(&removedCount))
-	assert.Equal(t, 1, removedCount)
+	assert.Equal(t, 1, fx.CountStatusesByStatus(1, "removed"))
 
 	// Output should show + indicator for restored scenario
 	assert.Contains(t, out, "+")
@@ -1362,13 +1147,8 @@ func TestSync_ContentChangeInsertsModifiedStatus(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var status string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&status))
-	assert.Equal(t, "modified", status)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "modified", fx.LatestStatusByID(1))
 }
 
 // @ft:156
@@ -1390,13 +1170,8 @@ func TestSync_NameChangeDoesNotInsertModifiedStatus(t *testing.T) {
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var status string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&status))
-	assert.Equal(t, "accepted", status)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "accepted", fx.LatestStatusByID(1))
 }
 
 // @ft:157
@@ -1419,13 +1194,8 @@ func TestSync_RepeatedSyncDoesNotDuplicateModified(t *testing.T) {
 	runSync(t)
 	runSync(t) // sync again without further edits
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'modified'`).Scan(&count))
-	assert.Equal(t, 1, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountStatusesByStatus(1, "modified"))
 }
 
 // @ft:160
@@ -1453,13 +1223,8 @@ func TestSync_ContentChangeWhileAlreadyModifiedDoesNotDuplicate(t *testing.T) {
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(updated), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'modified'`).Scan(&count))
-	assert.Equal(t, 1, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 1, fx.CountStatusesByStatus(1, "modified"))
 }
 
 // @ft:159
@@ -1486,17 +1251,9 @@ func TestSync_RestoredScenarioDoesNotGetModifiedStatus(t *testing.T) {
 `), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var latestStatus string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&latestStatus))
-	assert.Equal(t, "restored", latestStatus)
-
-	var modifiedCount int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1 AND status = 'modified'`).Scan(&modifiedCount))
-	assert.Equal(t, 0, modifiedCount)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "restored", fx.LatestStatusByID(1))
+	assert.Equal(t, 0, fx.CountStatusesByStatus(1, "modified"))
 }
 
 // @ft:165
@@ -1516,13 +1273,8 @@ func TestSync_NoStatusHistoryDoesNotGetModified(t *testing.T) {
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(updated), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountStatuses(1))
 }
 
 // @ft:171
@@ -1543,13 +1295,8 @@ func TestLogin(t *testing.T) {}
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var filePath string
-	var lineNumber int
-	require.NoError(t, sqlDB.QueryRow(`SELECT file_path, line_number FROM test_links WHERE scenario_id = 1`).Scan(&filePath, &lineNumber))
+	fx := dbtest.Open(t, "fts/ft.db")
+	filePath, lineNumber := fx.TestLink(1)
 	assert.Equal(t, "pkg/login_test.go", filePath)
 	assert.Equal(t, 2, lineNumber)
 }
@@ -1578,13 +1325,8 @@ func TestLoginFail(t *testing.T) {}
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
-	assert.Equal(t, 2, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 2, fx.CountTestLinks())
 }
 
 // @ft:173
@@ -1610,13 +1352,8 @@ func TestLoginCmd(t *testing.T) {}
 
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links WHERE scenario_id = 1`).Scan(&count))
-	assert.Equal(t, 2, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 2, fx.CountTestLinksForScenario(1))
 }
 
 // @ft:174
@@ -1642,13 +1379,8 @@ func TestLogin(t *testing.T) {}
 `), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountTestLinks())
 }
 
 // @ft:175
@@ -1678,12 +1410,8 @@ func TestLogin(t *testing.T) {}
 `), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var lineNumber int
-	require.NoError(t, sqlDB.QueryRow(`SELECT line_number FROM test_links WHERE scenario_id = 1`).Scan(&lineNumber))
+	fx := dbtest.Open(t, "fts/ft.db")
+	_, lineNumber := fx.TestLink(1)
 	assert.Equal(t, 5, lineNumber)
 }
 
@@ -1704,13 +1432,8 @@ func Login() {}
 `), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountTestLinks())
 }
 
 // @ft:177
@@ -1730,13 +1453,8 @@ func TestHook(t *testing.T) {}
 `), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountTestLinks())
 }
 
 // @ft:178
@@ -1756,13 +1474,8 @@ func TestLogin(t *testing.T) {}
 `), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountTestLinks())
 }
 
 // @ft:184
@@ -1785,13 +1498,8 @@ func TestLogin(t *testing.T) {
 `), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountTestLinks())
 }
 
 // @ft:185
@@ -1814,13 +1522,8 @@ func TestLogin(t *testing.T) {}
 `), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountTestLinks())
 }
 
 // @ft:186
@@ -1850,11 +1553,6 @@ func TestSync_IgnoresTagInsideRawStringLiteral(t *testing.T) {
 	), 0o644))
 	runSync(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links`).Scan(&count))
-	assert.Equal(t, 0, count)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 0, fx.CountTestLinks())
 }

@@ -1,11 +1,10 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/chriserin/ft/internal/db"
 	"github.com/chriserin/ft/internal/ui"
@@ -48,22 +47,15 @@ type listRow struct {
 }
 
 func matchesFilter(status string, includes []string, excludes []string) bool {
-	for _, ex := range excludes {
-		if status == ex {
-			return false
-		}
+	if slices.Contains(excludes, status) {
+		return false
 	}
 
 	if len(includes) == 0 {
 		return true
 	}
 
-	for _, inc := range includes {
-		if status == inc {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(includes, status)
 }
 
 func extractVirtual(filters []string, name string) ([]string, bool) {
@@ -79,66 +71,43 @@ func extractVirtual(filters []string, name string) ([]string, bool) {
 	return remaining, found
 }
 
-func isTested(sqlDB *sql.DB, scenarioID int64) bool {
-	var count int
-	err := sqlDB.QueryRow(`SELECT COUNT(*) FROM test_links WHERE scenario_id = ?`, scenarioID).Scan(&count)
-	return err == nil && count > 0
-}
-
 func RunList(w io.Writer, includes []string, excludes []string) error {
-	if _, err := os.Stat("fts"); os.IsNotExist(err) {
-		return fmt.Errorf("run `ft init` first")
-	}
-
-	sqlDB, err := db.Open("fts/ft.db")
+	store, err := db.OpenProjectStore()
 	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+		return err
 	}
-	defer sqlDB.Close()
+	defer store.Close()
 
 	// Extract virtual "tested" filter
 	includes, requireTested := extractVirtual(includes, "tested")
 	excludes, excludeTested := extractVirtual(excludes, "tested")
 
-	rows, err := sqlDB.Query(`
-		SELECT s.id, f.file_path, s.name,
-			COALESCE(
-				(SELECT status FROM statuses WHERE scenario_id = s.id ORDER BY changed_at DESC, id DESC LIMIT 1),
-				'no-activity'
-			) AS current_status
-		FROM scenarios s
-		JOIN files f ON s.file_id = f.id
-		ORDER BY f.file_path, s.id
-	`)
+	rows, err := store.ListScenarios()
 	if err != nil {
 		return fmt.Errorf("querying scenarios: %w", err)
 	}
-	defer rows.Close()
 
 	var results []listRow
-	for rows.Next() {
-		var r listRow
-		var filePath string
-		if err := rows.Scan(&r.id, &filePath, &r.name, &r.status); err != nil {
-			return fmt.Errorf("scanning row: %w", err)
+	for _, row := range rows {
+		r := listRow{
+			id:       row.ID,
+			fileName: filepath.Base(row.FilePath),
+			name:     row.Name,
+			status:   row.Status,
 		}
-		r.fileName = filepath.Base(filePath)
 
 		if (len(includes) > 0 || len(excludes) > 0) && !matchesFilter(r.status, includes, excludes) {
 			continue
 		}
 
-		if requireTested && !isTested(sqlDB, r.id) {
+		if requireTested && !store.IsTested(r.id) {
 			continue
 		}
-		if excludeTested && isTested(sqlDB, r.id) {
+		if excludeTested && store.IsTested(r.id) {
 			continue
 		}
 
 		results = append(results, r)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating rows: %w", err)
 	}
 
 	if len(results) == 0 {

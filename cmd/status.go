@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 
@@ -37,31 +36,23 @@ func RunStatusUpdate(w io.Writer, rawID, status string) error {
 		return fmt.Errorf("invalid scenario ID: %s", rawID)
 	}
 
-	if _, err := os.Stat("fts"); os.IsNotExist(err) {
-		return fmt.Errorf("run `ft init` first")
-	}
-
-	sqlDB, err := db.Open("fts/ft.db")
+	store, err := db.OpenProjectStore()
 	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+		return err
 	}
-	defer sqlDB.Close()
+	defer store.Close()
 
-	var existingID int64
-	err = sqlDB.QueryRow(`SELECT id FROM scenarios WHERE id = ?`, id).Scan(&existingID)
-	if err != nil {
+	if !store.ScenarioExists(id) {
 		return fmt.Errorf("scenario %d not found", id)
 	}
 
 	// Query previous status before inserting
-	var prevStatus string
-	err = sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = ? ORDER BY changed_at DESC, id DESC LIMIT 1`, id).Scan(&prevStatus)
+	prevStatus, err := store.CurrentStatus(id)
 	if err != nil {
 		prevStatus = ""
 	}
 
-	_, err = sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (?, ?)`, id, status)
-	if err != nil {
+	if err := store.InsertStatus(id, status); err != nil {
 		return fmt.Errorf("inserting status: %w", err)
 	}
 
@@ -70,18 +61,13 @@ func RunStatusUpdate(w io.Writer, rawID, status string) error {
 }
 
 func RunStatusReport(w io.Writer) error {
-	if _, err := os.Stat("fts"); os.IsNotExist(err) {
-		return fmt.Errorf("run `ft init` first")
-	}
-
-	sqlDB, err := db.Open("fts/ft.db")
+	store, err := db.OpenProjectStore()
 	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+		return err
 	}
-	defer sqlDB.Close()
+	defer store.Close()
 
-	var count int
-	err = sqlDB.QueryRow(`SELECT COUNT(*) FROM scenarios`).Scan(&count)
+	count, err := store.CountScenarios()
 	if err != nil {
 		return fmt.Errorf("counting scenarios: %w", err)
 	}
@@ -92,30 +78,16 @@ func RunStatusReport(w io.Writer) error {
 		return nil
 	}
 
-	rows, err := sqlDB.Query(`
-		SELECT COALESCE(
-			(SELECT status FROM statuses WHERE scenario_id = s.id ORDER BY changed_at DESC, id DESC LIMIT 1),
-			'no-activity'
-		) AS current_status, COUNT(*) AS cnt
-		FROM scenarios s
-		GROUP BY current_status
-		ORDER BY CASE WHEN current_status = 'no-activity' THEN 1 ELSE 0 END, cnt DESC
-	`)
+	counts, err := store.StatusCounts()
 	if err != nil {
 		return fmt.Errorf("querying status counts: %w", err)
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var status string
-		var cnt int
-		if err := rows.Scan(&status, &cnt); err != nil {
-			return fmt.Errorf("scanning status row: %w", err)
-		}
-		if cnt > 0 {
-			fmt.Fprintf(w, "  %s: %d\n", status, cnt)
+	for _, c := range counts {
+		if c.Count > 0 {
+			fmt.Fprintf(w, "  %s: %d\n", c.Status, c.Count)
 		}
 	}
 
-	return rows.Err()
+	return nil
 }

@@ -43,8 +43,8 @@ func Parse(filename string, content []byte) (*Document, []ParseError) {
 	// Look for Feature: line
 	if i < len(lines) {
 		trimmed := strings.TrimSpace(lines[i])
-		if strings.HasPrefix(trimmed, "Feature:") {
-			feature.Header.Name = strings.TrimSpace(strings.TrimPrefix(trimmed, "Feature:"))
+		if after, ok := strings.CutPrefix(trimmed, "Feature:"); ok {
+			feature.Header.Name = strings.TrimSpace(after)
 			feature.Header.Tags = featureTags
 			i++
 

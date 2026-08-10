@@ -1,14 +1,12 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/chriserin/ft/internal/db"
 	"github.com/chriserin/ft/internal/parser"
@@ -43,29 +41,19 @@ func RunShow(w io.Writer, rawID string) error {
 		return fmt.Errorf("invalid scenario ID: %s", rawID)
 	}
 
-	if _, err := os.Stat("fts"); os.IsNotExist(err) {
-		return fmt.Errorf("run `ft init` first")
-	}
-
-	sqlDB, err := db.Open("fts/ft.db")
+	store, err := db.OpenProjectStore()
 	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+		return err
 	}
-	defer sqlDB.Close()
+	defer store.Close()
 
-	var scenarioID int64
-	var scenarioName string
-	var filePath string
-	var storedContent sql.NullString
-	err = sqlDB.QueryRow(`
-		SELECT s.id, s.name, f.file_path, s.content
-		FROM scenarios s
-		JOIN files f ON s.file_id = f.id
-		WHERE s.id = ?
-	`, id).Scan(&scenarioID, &scenarioName, &filePath, &storedContent)
+	detail, err := store.ScenarioDetail(id)
 	if err != nil {
 		return fmt.Errorf("scenario %d not found", id)
 	}
+	scenarioID := detail.ID
+	filePath := detail.FilePath
+	storedContent := detail.Content
 
 	fileName := filepath.Base(filePath)
 
@@ -100,27 +88,19 @@ func RunShow(w io.Writer, rawID string) error {
 
 	// Query current status
 	currentStatus := "no-activity"
-	var statusStr string
-	err = sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = ? ORDER BY changed_at DESC, id DESC LIMIT 1`, id).Scan(&statusStr)
-	if err == nil {
+	if statusStr, err := store.CurrentStatus(id); err == nil {
 		currentStatus = statusStr
 	}
 
 	// Query history
-	histRows, err := sqlDB.Query(`SELECT status, changed_at FROM statuses WHERE scenario_id = ? ORDER BY changed_at DESC, id DESC`, id)
+	statusHistory, err := store.StatusHistory(id)
 	if err != nil {
 		return fmt.Errorf("querying status history: %w", err)
 	}
-	defer histRows.Close()
 
 	var history []ui.HistoryEntry
-	for histRows.Next() {
-		var s string
-		var changedAt time.Time
-		if err := histRows.Scan(&s, &changedAt); err != nil {
-			return fmt.Errorf("scanning history row: %w", err)
-		}
-		history = append(history, ui.HistoryEntry{Status: s, ChangedAt: changedAt})
+	for _, e := range statusHistory {
+		history = append(history, ui.HistoryEntry{Status: e.Status, ChangedAt: e.ChangedAt})
 	}
 
 	// Print header and status
@@ -134,14 +114,10 @@ func RunShow(w io.Writer, rawID string) error {
 
 	// Query test links
 	var testLinks []ui.TestLink
-	tlRows, err := sqlDB.Query(`SELECT file_path, line_number FROM test_links WHERE scenario_id = ? ORDER BY file_path, line_number`, id)
+	dbTestLinks, err := store.TestLinks(id)
 	if err == nil {
-		defer tlRows.Close()
-		for tlRows.Next() {
-			var tl ui.TestLink
-			if err := tlRows.Scan(&tl.FilePath, &tl.LineNumber); err == nil {
-				testLinks = append(testLinks, tl)
-			}
+		for _, tl := range dbTestLinks {
+			testLinks = append(testLinks, ui.TestLink{FilePath: tl.FilePath, LineNumber: tl.LineNumber})
 		}
 	}
 	if len(testLinks) > 0 {
@@ -169,41 +145,28 @@ func RunShowHistory(w io.Writer, rawID string) error {
 		return fmt.Errorf("invalid scenario ID: %s", rawID)
 	}
 
-	if _, err := os.Stat("fts"); os.IsNotExist(err) {
-		return fmt.Errorf("run `ft init` first")
-	}
-
-	sqlDB, err := db.Open("fts/ft.db")
+	store, err := db.OpenProjectStore()
 	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+		return err
 	}
-	defer sqlDB.Close()
+	defer store.Close()
 
-	var scenarioID int64
-	var scenarioName string
-	var createdAt time.Time
-	err = sqlDB.QueryRow(`SELECT id, name, created_at FROM scenarios WHERE id = ?`, id).Scan(&scenarioID, &scenarioName, &createdAt)
+	scenarioName, createdAt, err := store.ScenarioBasic(id)
 	if err != nil {
 		return fmt.Errorf("scenario %d not found", id)
 	}
 
-	histRows, err := sqlDB.Query(`SELECT status, changed_at FROM statuses WHERE scenario_id = ? ORDER BY changed_at DESC, id DESC`, id)
+	statusHistory, err := store.StatusHistory(id)
 	if err != nil {
 		return fmt.Errorf("querying status history: %w", err)
 	}
-	defer histRows.Close()
 
 	var history []ui.HistoryEntry
-	for histRows.Next() {
-		var s string
-		var changedAt time.Time
-		if err := histRows.Scan(&s, &changedAt); err != nil {
-			return fmt.Errorf("scanning history row: %w", err)
-		}
-		history = append(history, ui.HistoryEntry{Status: s, ChangedAt: changedAt})
+	for _, e := range statusHistory {
+		history = append(history, ui.HistoryEntry{Status: e.Status, ChangedAt: e.ChangedAt})
 	}
 
-	ui.ShowHistoryHeader(w, scenarioID, scenarioName)
+	ui.ShowHistoryHeader(w, id, scenarioName)
 
 	if len(history) == 0 {
 		history = append(history, ui.HistoryEntry{Status: "no-activity", ChangedAt: createdAt})

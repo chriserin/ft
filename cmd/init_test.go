@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chriserin/ft/internal/db"
+	"github.com/chriserin/ft/internal/db/dbtest"
 )
 
 func inTempDir(t *testing.T) string {
@@ -62,13 +62,8 @@ func TestInit_InitializesSQLiteDatabase(t *testing.T) {
 	_, err := os.Stat(dbPath)
 	require.NoError(t, err)
 
-	sqlDB, err := db.Open(dbPath)
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var mode string
-	require.NoError(t, sqlDB.QueryRow("PRAGMA journal_mode").Scan(&mode))
-	assert.Equal(t, "wal", mode)
+	fx := dbtest.Open(t, dbPath)
+	assert.Equal(t, "wal", fx.JournalMode())
 	assert.Contains(t, out, "fts/ft.db created")
 }
 
@@ -86,13 +81,8 @@ func TestInit_AddsMigrationSystem(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var version int
-	require.NoError(t, sqlDB.QueryRow("SELECT version FROM schema_version").Scan(&version))
-	assert.Equal(t, 6, version)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 6, fx.SchemaVersion())
 }
 
 // @ft:6

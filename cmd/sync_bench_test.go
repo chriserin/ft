@@ -46,7 +46,7 @@ func setupBenchProject(b *testing.B, fileCount, scenariosPerFile, testFileCount 
 	var buf bytes.Buffer
 	require.NoError(b, RunInit(&buf))
 
-	for i := 0; i < fileCount; i++ {
+	for i := range fileCount {
 		name := fmt.Sprintf("feature_%d", i)
 		content := generateFtFile(name, scenariosPerFile)
 		require.NoError(b, os.WriteFile(fmt.Sprintf("fts/%s.ft", name), []byte(content), 0o644))
@@ -59,13 +59,10 @@ func setupBenchProject(b *testing.B, fileCount, scenariosPerFile, testFileCount 
 	// Generate test files linking to scenario IDs
 	if testFileCount > 0 {
 		totalScenarios := fileCount * scenariosPerFile
-		scenariosPerTestFile := totalScenarios / testFileCount
-		if scenariosPerTestFile < 1 {
-			scenariosPerTestFile = 1
-		}
+		scenariosPerTestFile := max(totalScenarios/testFileCount, 1)
 		require.NoError(b, os.MkdirAll("pkg", 0o755))
 		id := 1
-		for i := 0; i < testFileCount; i++ {
+		for i := range testFileCount {
 			var ids []int
 			for j := 0; j < scenariosPerTestFile && id <= totalScenarios; j++ {
 				ids = append(ids, id)
@@ -85,8 +82,7 @@ func setupBenchProject(b *testing.B, fileCount, scenariosPerFile, testFileCount 
 func BenchmarkSync_Incremental_Small(b *testing.B) {
 	setupBenchProject(b, 5, 10, 0)
 	var buf bytes.Buffer
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		buf.Reset()
 		require.NoError(b, RunSync(&buf))
 	}
@@ -96,8 +92,8 @@ func BenchmarkSync_Incremental_Small(b *testing.B) {
 func BenchmarkSync_Incremental_Medium(b *testing.B) {
 	setupBenchProject(b, 20, 20, 0)
 	var buf bytes.Buffer
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		buf.Reset()
 		require.NoError(b, RunSync(&buf))
 	}
@@ -107,8 +103,7 @@ func BenchmarkSync_Incremental_Medium(b *testing.B) {
 func BenchmarkSync_Incremental_Large(b *testing.B) {
 	setupBenchProject(b, 50, 50, 0)
 	var buf bytes.Buffer
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		buf.Reset()
 		require.NoError(b, RunSync(&buf))
 	}
@@ -118,8 +113,7 @@ func BenchmarkSync_Incremental_Large(b *testing.B) {
 func BenchmarkSync_WithTestLinks_Small(b *testing.B) {
 	setupBenchProject(b, 5, 10, 5)
 	var buf bytes.Buffer
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		buf.Reset()
 		require.NoError(b, RunSync(&buf))
 	}
@@ -129,8 +123,7 @@ func BenchmarkSync_WithTestLinks_Small(b *testing.B) {
 func BenchmarkSync_WithTestLinks_Large(b *testing.B) {
 	setupBenchProject(b, 20, 20, 50)
 	var buf bytes.Buffer
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		buf.Reset()
 		require.NoError(b, RunSync(&buf))
 	}
@@ -138,7 +131,7 @@ func BenchmarkSync_WithTestLinks_Large(b *testing.B) {
 
 // BenchmarkSync_FirstSync_Small: initial sync of 5 files, 10 scenarios each
 func BenchmarkSync_FirstSync_Small(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		b.StopTimer()
 		dir := b.TempDir()
 		orig, _ := os.Getwd()
@@ -146,7 +139,7 @@ func BenchmarkSync_FirstSync_Small(b *testing.B) {
 
 		var buf bytes.Buffer
 		RunInit(&buf)
-		for f := 0; f < 5; f++ {
+		for f := range 5 {
 			content := generateFtFile(fmt.Sprintf("feature_%d", f), 10)
 			os.WriteFile(fmt.Sprintf("fts/feature_%d.ft", f), []byte(content), 0o644)
 		}
@@ -156,12 +149,13 @@ func BenchmarkSync_FirstSync_Small(b *testing.B) {
 		RunSync(&buf)
 		b.StopTimer()
 		os.Chdir(orig)
+		b.StartTimer()
 	}
 }
 
 // BenchmarkSync_FirstSync_Large: initial sync of 50 files, 50 scenarios each
 func BenchmarkSync_FirstSync_Large(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		b.StopTimer()
 		dir := b.TempDir()
 		orig, _ := os.Getwd()
@@ -169,7 +163,7 @@ func BenchmarkSync_FirstSync_Large(b *testing.B) {
 
 		var buf bytes.Buffer
 		RunInit(&buf)
-		for f := 0; f < 50; f++ {
+		for f := range 50 {
 			content := generateFtFile(fmt.Sprintf("feature_%d", f), 50)
 			os.WriteFile(fmt.Sprintf("fts/feature_%d.ft", f), []byte(content), 0o644)
 		}
@@ -179,5 +173,6 @@ func BenchmarkSync_FirstSync_Large(b *testing.B) {
 		RunSync(&buf)
 		b.StopTimer()
 		os.Chdir(orig)
+		b.StartTimer()
 	}
 }

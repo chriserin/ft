@@ -24,9 +24,8 @@ func init() {
 
 func RunInit(w io.Writer) error {
 	// fts/ directory
-	_, err := os.Stat("fts")
-	ftsExists := err == nil
-	if err := os.MkdirAll("fts", 0o755); err != nil {
+	ftsExists := db.DataDirExists()
+	if err := db.EnsureDataDir(); err != nil {
 		return fmt.Errorf("creating fts directory: %w", err)
 	}
 	if ftsExists {
@@ -36,13 +35,12 @@ func RunInit(w io.Writer) error {
 	}
 
 	// database
-	_, err = os.Stat("fts/ft.db")
-	dbExists := err == nil
-	sqlDB, err := db.Open("fts/ft.db")
+	dbExists := db.FileExists()
+	store, err := db.OpenProjectStore()
 	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+		return err
 	}
-	sqlDB.Close()
+	store.Close()
 	if dbExists {
 		fmt.Fprintln(w, "fts/ft.db already exists")
 	} else {
@@ -62,7 +60,7 @@ func RunInit(w io.Writer) error {
 }
 
 func ensureGitignore() ([]string, error) {
-	const entry = "fts/ft.db"
+	entry := db.Path()
 
 	data, err := os.ReadFile(".gitignore")
 	if os.IsNotExist(err) {
@@ -75,8 +73,8 @@ func ensureGitignore() ([]string, error) {
 		return nil, err
 	}
 
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(data), "\n")
+	for line := range lines {
 		if strings.TrimSpace(line) == entry {
 			return []string{"fts/ft.db already in .gitignore"}, nil
 		}

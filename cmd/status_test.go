@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chriserin/ft/internal/db"
+	"github.com/chriserin/ft/internal/db/dbtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,13 +39,8 @@ func TestStatus_SetScenarioStatus(t *testing.T) {
 
 	runStatusUpdate(t, "1", "accepted")
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var status string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1`).Scan(&status))
-	assert.Equal(t, "accepted", status)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "accepted", fx.Status(1))
 }
 
 // @ft:58
@@ -56,13 +51,8 @@ func TestStatus_AcceptsAtFtPrefix(t *testing.T) {
 
 	runStatusUpdate(t, "@ft:1", "in-progress")
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var status string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1`).Scan(&status))
-	assert.Equal(t, "in-progress", status)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "in-progress", fx.Status(1))
 }
 
 // @ft:59
@@ -73,13 +63,8 @@ func TestStatus_AcceptsAnyText(t *testing.T) {
 
 	runStatusUpdate(t, "1", "my-custom-status")
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var status string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1`).Scan(&status))
-	assert.Equal(t, "my-custom-status", status)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "my-custom-status", fx.Status(1))
 }
 
 // @ft:60
@@ -103,17 +88,9 @@ func TestStatus_MultipleChangesCreateHistory(t *testing.T) {
 	runStatusUpdate(t, "1", "accepted")
 	runStatusUpdate(t, "1", "in-progress")
 
-	sqlDB, err := db.Open("fts/ft.db")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	var count int
-	require.NoError(t, sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = 1`).Scan(&count))
-	assert.Equal(t, 2, count)
-
-	var latest string
-	require.NoError(t, sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = 1 ORDER BY changed_at DESC, id DESC LIMIT 1`).Scan(&latest))
-	assert.Equal(t, "in-progress", latest)
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, 2, fx.CountStatuses(1))
+	assert.Equal(t, "in-progress", fx.LatestStatusByChangedAt(1))
 }
 
 // @ft:62
@@ -235,8 +212,8 @@ func TestShow_DisplaysStatusHistory(t *testing.T) {
 	assert.True(t, inProgressInHistory < acceptedInHistory, "in-progress should appear before accepted in history")
 
 	// Each history entry should have a timestamp-like pattern (contains a comma for "Jan 2, 2006")
-	lines := strings.Split(out, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(out, "\n")
+	for line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "in-progress") || strings.HasPrefix(strings.TrimSpace(line), "accepted") {
 			// Lines in the history section should have timestamps
 			if strings.Contains(out[strings.Index(out, "History:"):], line) && strings.TrimSpace(line) != "" {
@@ -438,6 +415,6 @@ func TestShow_HistoryUsesHumanReadableTimestamps(t *testing.T) {
 	// Should contain human-readable format like "Feb 20, 2026 3:04pm"
 	// Should NOT contain ISO 8601 format like "2026-02-20T"
 	historySection := out[strings.Index(out, "History:"):]
-	assert.NotContains(t, historySection, "T")      // ISO 8601 uses T separator
-	assert.Contains(t, historySection, ",")          // Human readable has comma in "Jan 2, 2006"
+	assert.NotContains(t, historySection, "T") // ISO 8601 uses T separator
+	assert.Contains(t, historySection, ",")    // Human readable has comma in "Jan 2, 2006"
 }

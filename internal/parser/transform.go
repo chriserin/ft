@@ -46,8 +46,8 @@ func Transform(doc *Document, filename string, content []byte, errors []ParseErr
 
 		// Partition tags into FtTag vs OtherTags
 		for _, tag := range sd.Tags {
-			if strings.HasPrefix(tag.Name, "@ft:") {
-				ps.FtTag = strings.TrimPrefix(tag.Name, "@ft:")
+			if after, ok := strings.CutPrefix(tag.Name, "@ft:"); ok {
+				ps.FtTag = after
 			} else {
 				ps.OtherTags = append(ps.OtherTags, tag.Name)
 			}

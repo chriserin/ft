@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"go/scanner"
 	"go/token"
@@ -37,43 +36,10 @@ type tagInsertion struct {
 	id   int64 // scenario ID
 }
 
-type dbScenario struct {
-	ID      int64
-	Name    string
-	Content sql.NullString
-}
-
 type scenarioAction struct {
 	kind string // "new", "modified", "removed", "unchanged"
 	id   int64
 	name string
-}
-
-func loadDBScenarios(sqlDB *sql.DB, fileID int64) map[int64]dbScenario {
-	rows, err := sqlDB.Query(`SELECT id, name, content FROM scenarios WHERE file_id = ?`, fileID)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-
-	result := make(map[int64]dbScenario)
-	for rows.Next() {
-		var s dbScenario
-		if err := rows.Scan(&s.ID, &s.Name, &s.Content); err != nil {
-			continue
-		}
-		result[s.ID] = s
-	}
-	return result
-}
-
-func scenarioHasStatusHistory(sqlDB *sql.DB, scenarioID int64) bool {
-	var count int
-	err := sqlDB.QueryRow(`SELECT COUNT(*) FROM statuses WHERE scenario_id = ?`, scenarioID).Scan(&count)
-	if err != nil {
-		return false
-	}
-	return count > 0
 }
 
 func stepsOf(content string) string {
@@ -84,21 +50,11 @@ func stepsOf(content string) string {
 	return after
 }
 
-func scenarioLatestStatus(sqlDB *sql.DB, scenarioID int64) string {
-	var status string
-	err := sqlDB.QueryRow(`SELECT status FROM statuses WHERE scenario_id = ? ORDER BY id DESC LIMIT 1`, scenarioID).Scan(&status)
+func reconcileTrackedFile(store *db.Store, fileID int64, pf *parser.ParsedFile) ([]scenarioAction, []tagInsertion, error) {
+	remaining, err := store.ScenariosByFile(fileID)
 	if err != nil {
-		return ""
+		return nil, nil, err
 	}
-	return status
-}
-
-func scenarioLatestStatusIsRemoved(sqlDB *sql.DB, scenarioID int64) bool {
-	return scenarioLatestStatus(sqlDB, scenarioID) == "removed"
-}
-
-func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([]scenarioAction, []tagInsertion) {
-	remaining := loadDBScenarios(sqlDB, fileID)
 	var actions []scenarioAction
 	var insertions []tagInsertion
 
@@ -113,9 +69,9 @@ func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([
 					delete(remaining, tagID)
 					matched = true
 
-					wasRemoved := scenarioLatestStatusIsRemoved(sqlDB, tagID)
+					wasRemoved := store.LatestInsertedStatusIsRemoved(tagID)
 					if wasRemoved {
-						sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (?, 'restored')`, tagID)
+						store.InsertStatus(tagID, "restored")
 					}
 
 					nameChanged := dbS.Name != ps.Name
@@ -123,17 +79,18 @@ func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([
 					firstPopulation := !dbS.Content.Valid
 
 					if wasRemoved {
-						sqlDB.Exec(`UPDATE scenarios SET name = ?, content = ?, updated_at = datetime('now') WHERE id = ?`, ps.Name, ps.Content, tagID)
+						store.UpdateScenarioNameContent(tagID, ps.Name, ps.Content)
 						actions = append(actions, scenarioAction{kind: "new", id: tagID, name: ps.Name})
 					} else if nameChanged || contentChanged {
-						sqlDB.Exec(`UPDATE scenarios SET name = ?, content = ?, updated_at = datetime('now') WHERE id = ?`, ps.Name, ps.Content, tagID)
-						if contentChanged && scenarioHasStatusHistory(sqlDB, tagID) && scenarioLatestStatus(sqlDB, tagID) != "modified" {
-							sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (?, 'modified')`, tagID)
+						store.UpdateScenarioNameContent(tagID, ps.Name, ps.Content)
+						latestStatus, _ := store.LatestInsertedStatus(tagID)
+						if contentChanged && store.HasStatusHistory(tagID) && latestStatus != "modified" {
+							store.InsertStatus(tagID, "modified")
 						}
 						actions = append(actions, scenarioAction{kind: "modified", id: tagID, name: ps.Name})
 					} else if firstPopulation {
 						// Silently populate content without marking as modified
-						sqlDB.Exec(`UPDATE scenarios SET content = ?, updated_at = datetime('now') WHERE id = ?`, ps.Content, tagID)
+						store.UpdateScenarioContent(tagID, ps.Content)
 						actions = append(actions, scenarioAction{kind: "unchanged", id: tagID, name: ps.Name})
 					} else {
 						actions = append(actions, scenarioAction{kind: "unchanged", id: tagID, name: ps.Name})
@@ -151,7 +108,7 @@ func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([
 					// Matched by name
 					delete(remaining, dbID)
 					nameMatched = true
-					sqlDB.Exec(`UPDATE scenarios SET name = ?, content = ?, updated_at = datetime('now') WHERE id = ?`, ps.Name, ps.Content, dbID)
+					store.UpdateScenarioNameContent(dbID, ps.Name, ps.Content)
 					insertions = append(insertions, tagInsertion{line: ps.Line, id: dbID})
 					actions = append(actions, scenarioAction{kind: "modified", id: dbID, name: ps.Name})
 					break
@@ -160,9 +117,8 @@ func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([
 
 			if !nameMatched {
 				// New scenario
-				result, err := sqlDB.Exec(`INSERT INTO scenarios (file_id, name, content) VALUES (?, ?, ?)`, fileID, ps.Name, ps.Content)
+				id, err := store.InsertScenario(fileID, ps.Name, ps.Content)
 				if err == nil {
-					id, _ := result.LastInsertId()
 					insertions = append(insertions, tagInsertion{line: ps.Line, id: id})
 					actions = append(actions, scenarioAction{kind: "new", id: id, name: ps.Name})
 				}
@@ -172,33 +128,36 @@ func reconcileTrackedFile(sqlDB *sql.DB, fileID int64, pf *parser.ParsedFile) ([
 
 	// Remaining entries are removed scenarios
 	for dbID, dbS := range remaining {
-		if scenarioLatestStatusIsRemoved(sqlDB, dbID) {
+		if store.LatestInsertedStatusIsRemoved(dbID) {
 			continue
 		}
 		actions = append(actions, scenarioAction{kind: "removed", id: dbID, name: dbS.Name})
-		if scenarioHasStatusHistory(sqlDB, dbID) {
-			sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (?, 'removed')`, dbID)
+		if store.HasStatusHistory(dbID) {
+			store.InsertStatus(dbID, "removed")
 		} else {
-			sqlDB.Exec(`DELETE FROM scenarios WHERE id = ?`, dbID)
+			store.DeleteScenario(dbID)
 		}
 	}
 
-	return actions, insertions
+	return actions, insertions, nil
 }
 
-func handleDeletedFile(sqlDB *sql.DB, fileID int64) ([]scenarioAction, error) {
-	remaining := loadDBScenarios(sqlDB, fileID)
+func handleDeletedFile(store *db.Store, fileID int64) ([]scenarioAction, error) {
+	remaining, err := store.ScenariosByFile(fileID)
+	if err != nil {
+		return nil, err
+	}
 	var actions []scenarioAction
 
 	for dbID, dbS := range remaining {
-		if scenarioLatestStatusIsRemoved(sqlDB, dbID) {
+		if store.LatestInsertedStatusIsRemoved(dbID) {
 			continue
 		}
 		actions = append(actions, scenarioAction{kind: "removed", id: dbID, name: dbS.Name})
-		if scenarioHasStatusHistory(sqlDB, dbID) {
-			sqlDB.Exec(`INSERT INTO statuses (scenario_id, status) VALUES (?, 'removed')`, dbID)
+		if store.HasStatusHistory(dbID) {
+			store.InsertStatus(dbID, "removed")
 		} else {
-			sqlDB.Exec(`DELETE FROM scenarios WHERE id = ?`, dbID)
+			store.DeleteScenario(dbID)
 		}
 	}
 
@@ -206,15 +165,11 @@ func handleDeletedFile(sqlDB *sql.DB, fileID int64) ([]scenarioAction, error) {
 }
 
 func RunSync(w io.Writer) error {
-	if _, err := os.Stat("fts"); os.IsNotExist(err) {
-		return fmt.Errorf("run `ft init` first")
-	}
-
-	sqlDB, err := db.Open("fts/ft.db")
+	store, err := db.OpenProjectStore()
 	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+		return err
 	}
-	defer sqlDB.Close()
+	defer store.Close()
 
 	matches, err := filepath.Glob("fts/*.ft")
 	if err != nil {
@@ -231,26 +186,30 @@ func RunSync(w io.Writer) error {
 		// Register file in files table (filter deleted = FALSE)
 		var fileID int64
 		var isNew bool
-		err := sqlDB.QueryRow(`SELECT id FROM files WHERE file_path = ? AND deleted = FALSE`, path).Scan(&fileID)
-		if err == sql.ErrNoRows {
+		activeID, found, err := store.FindActiveFileID(path)
+		if err != nil {
+			return fmt.Errorf("querying %s: %w", path, err)
+		}
+		if found {
+			fileID = activeID
+		} else {
 			// Check if there's a deleted record to undelete
-			var deletedID int64
-			err2 := sqlDB.QueryRow(`SELECT id FROM files WHERE file_path = ? AND deleted = TRUE`, path).Scan(&deletedID)
-			if err2 == nil {
+			deletedID, foundDeleted, err := store.FindDeletedFileID(path)
+			if err != nil {
+				return fmt.Errorf("querying %s: %w", path, err)
+			}
+			if foundDeleted {
 				// Undelete
-				sqlDB.Exec(`UPDATE files SET deleted = FALSE, updated_at = datetime('now') WHERE id = ?`, deletedID)
+				store.UndeleteFile(deletedID)
 				fileID = deletedID
 				isNew = false
 			} else {
-				result, err := sqlDB.Exec(`INSERT INTO files (file_path) VALUES (?)`, path)
+				fileID, err = store.InsertFile(path)
 				if err != nil {
 					return fmt.Errorf("inserting %s: %w", path, err)
 				}
-				fileID, _ = result.LastInsertId()
 				isNew = true
 			}
-		} else if err != nil {
-			return fmt.Errorf("querying %s: %w", path, err)
 		}
 
 		// Read and parse file
@@ -285,14 +244,10 @@ func RunSync(w io.Writer) error {
 
 			var insertions []tagInsertion
 			for _, ps := range pf.Scenarios {
-				result, err := sqlDB.Exec(
-					`INSERT INTO scenarios (file_id, name, content) VALUES (?, ?, ?)`,
-					fileID, ps.Name, ps.Content,
-				)
+				id, err := store.InsertScenario(fileID, ps.Name, ps.Content)
 				if err != nil {
 					return fmt.Errorf("inserting scenario %q: %w", ps.Name, err)
 				}
-				id, _ := result.LastInsertId()
 				insertions = append(insertions, tagInsertion{line: ps.Line, id: id})
 				ui.ScenarioLine(w, id, ps.Name)
 				scenarioCount++
@@ -305,7 +260,10 @@ func RunSync(w io.Writer) error {
 			}
 		} else {
 			// Tracked file path
-			actions, insertions := reconcileTrackedFile(sqlDB, fileID, pf)
+			actions, insertions, err := reconcileTrackedFile(store, fileID, pf)
+			if err != nil {
+				return fmt.Errorf("reconciling %s: %w", path, err)
+			}
 
 			// Determine mod/trk
 			hasActivity := false
@@ -347,45 +305,32 @@ func RunSync(w io.Writer) error {
 	}
 
 	// Handle deleted files
-	rows, err := sqlDB.Query(`SELECT id, file_path FROM files WHERE deleted = FALSE`)
+	allFiles, err := store.ActiveFiles()
 	if err != nil {
 		return fmt.Errorf("querying files: %w", err)
 	}
-	defer rows.Close()
-
-	type fileRecord struct {
-		id   int64
-		path string
-	}
-	var allFiles []fileRecord
-	for rows.Next() {
-		var f fileRecord
-		if err := rows.Scan(&f.id, &f.path); err != nil {
-			continue
-		}
-		allFiles = append(allFiles, f)
-	}
-	rows.Close()
 
 	for _, f := range allFiles {
-		if !diskPaths[f.path] {
-			actions, err := handleDeletedFile(sqlDB, f.id)
+		if !diskPaths[f.FilePath] {
+			actions, err := handleDeletedFile(store, f.ID)
 			if err != nil {
-				return fmt.Errorf("handling deleted file %s: %w", f.path, err)
+				return fmt.Errorf("handling deleted file %s: %w", f.FilePath, err)
 			}
 
-			ui.DelLine(w, f.path)
+			ui.DelLine(w, f.FilePath)
 			fileCount++
 			for _, a := range actions {
 				ui.RemovedScenarioLine(w, a.id, a.name)
 				scenarioCount++
 			}
 
-			sqlDB.Exec(`UPDATE files SET deleted = TRUE, updated_at = datetime('now') WHERE id = ?`, f.id)
+			store.MarkFileDeleted(f.ID)
 		}
 	}
 
-	syncTestLinks(sqlDB)
+	if err := syncTestLinks(store); err != nil {
+		return fmt.Errorf("syncing test links: %w", err)
+	}
 
 	ui.SummaryLine(w, fileCount, scenarioCount)
 	return nil
@@ -417,16 +362,16 @@ func writeTagsToFile(path string, insertions []tagInsertion) error {
 
 		// Match indentation of the Scenario: line
 		scenarioLine := lines[idx]
-		indent := ""
+		var indent strings.Builder
 		for _, ch := range scenarioLine {
 			if ch == ' ' || ch == '\t' {
-				indent += string(ch)
+				indent.WriteString(string(ch))
 			} else {
 				break
 			}
 		}
 
-		tagLine := fmt.Sprintf("%s@ft:%d", indent, ins.id)
+		tagLine := fmt.Sprintf("%s@ft:%d", indent.String(), ins.id)
 
 		// Check if the line above is an existing @ft tag line — replace it
 		if idx > 0 && ftTagLineRe.MatchString(lines[idx-1]) {
@@ -536,7 +481,7 @@ func scanTestLinksInFile(path string, src []byte) []testLink {
 	return links
 }
 
-func syncTestLinks(sqlDB *sql.DB) {
+func syncTestLinks(store *db.Store) error {
 	var links []testLink
 
 	filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
@@ -564,34 +509,22 @@ func syncTestLinks(sqlDB *sql.DB) {
 	})
 
 	// Load all valid scenario IDs in one query
-	validIDs := make(map[int64]bool)
-	rows, err := sqlDB.Query(`SELECT id FROM scenarios`)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var id int64
-			if rows.Scan(&id) == nil {
-				validIDs[id] = true
-			}
+	validIDs, err := store.AllScenarioIDs()
+	if err != nil {
+		return err
+	}
+
+	var records []db.TestLinkRecord
+	for _, l := range links {
+		if validIDs[l.scenarioID] {
+			records = append(records, db.TestLinkRecord{
+				ScenarioID: l.scenarioID,
+				FilePath:   l.filePath,
+				LineNumber: l.lineNumber,
+			})
 		}
 	}
 
-	// Full reconciliation in a single transaction
-	tx, err := sqlDB.Begin()
-	if err != nil {
-		return
-	}
-	tx.Exec(`DELETE FROM test_links`)
-	stmt, err := tx.Prepare(`INSERT INTO test_links (scenario_id, file_path, line_number) VALUES (?, ?, ?)`)
-	if err != nil {
-		tx.Rollback()
-		return
-	}
-	defer stmt.Close()
-	for _, l := range links {
-		if validIDs[l.scenarioID] {
-			stmt.Exec(l.scenarioID, l.filePath, l.lineNumber)
-		}
-	}
-	tx.Commit()
+	store.ReplaceTestLinks(records)
+	return nil
 }

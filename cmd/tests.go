@@ -33,49 +33,40 @@ func RunTests(w io.Writer, rawID string) error {
 		return fmt.Errorf("invalid scenario ID: %s", rawID)
 	}
 
-	if _, err := os.Stat("fts"); os.IsNotExist(err) {
-		return fmt.Errorf("run `ft init` first")
-	}
-
-	sqlDB, err := db.Open("fts/ft.db")
+	store, err := db.OpenProjectStore()
 	if err != nil {
-		return fmt.Errorf("opening database: %w", err)
+		return err
 	}
-	defer sqlDB.Close()
+	defer store.Close()
 
-	var existingID int64
-	err = sqlDB.QueryRow(`SELECT id FROM scenarios WHERE id = ?`, id).Scan(&existingID)
-	if err != nil {
+	if !store.ScenarioExists(id) {
 		return fmt.Errorf("scenario %d not found", id)
 	}
 
-	rows, err := sqlDB.Query(`SELECT file_path, line_number FROM test_links WHERE scenario_id = ? ORDER BY file_path, line_number`, id)
+	links, err := store.TestLinks(id)
 	if err != nil {
 		return fmt.Errorf("querying test links: %w", err)
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var filePath string
-		var lineNumber int
-		if err := rows.Scan(&filePath, &lineNumber); err != nil {
-			continue
+	for _, l := range links {
+		name, err := testFuncName(l.FilePath, l.LineNumber)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", l.FilePath, err)
 		}
-		name := testFuncName(filePath, lineNumber)
 		if name != "" {
-			fmt.Fprintf(w, "  %s:%d %s\n", filePath, lineNumber, name)
+			fmt.Fprintf(w, "  %s:%d %s\n", l.FilePath, l.LineNumber, name)
 		} else {
-			fmt.Fprintf(w, "  %s:%d\n", filePath, lineNumber)
+			fmt.Fprintf(w, "  %s:%d\n", l.FilePath, l.LineNumber)
 		}
 	}
 
 	return nil
 }
 
-func testFuncName(filePath string, commentLine int) string {
+func testFuncName(filePath string, commentLine int) (string, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	defer f.Close()
 
@@ -95,9 +86,9 @@ func testFuncName(filePath string, commentLine int) string {
 			if idx := strings.IndexByte(name, '('); idx != -1 {
 				name = name[:idx]
 			}
-			return name
+			return name, nil
 		}
-		return ""
+		return "", nil
 	}
-	return ""
+	return "", scanner.Err()
 }
