@@ -212,3 +212,22 @@ Make each scenario's current status survive a fresh clone, even though `fts/ft.d
 **Schema**: none — `fts/statuses.csv` is a git-tracked file alongside `ft.db`, not a new table.
 
 **Testable**: run `ft status`, verify `fts/statuses.csv` gains a row. Delete `fts/ft.db` and rerun `ft sync` (not `ft init`), verify the DB and status history are rebuilt with the same ids and statuses as before.
+
+---
+
+## Phase 14: `ft agent-instructions`
+
+Print AI-facing instructions for using `ft` — command reference and status vocabulary, written as behavioral rules rather than documentation (see design/AGENT_INSTRUCTIONS.md).
+
+- `ft agent-instructions` takes no arguments, always prints to stdout, and does not require `ft init` to have been run first — it must not fail in an uninitialized project. It never touches the DB or `fts/` at all
+- `ft init` does not mention this command in its output
+- The output is a static Go string constant covering: core concepts (`@ft:<id>` tags, statuses, the gitignored DB vs. the git-tracked statuses file), a command reference phrased as instructions ("run `ft sync` after editing..."), and the status vocabulary split into three tiers by who's allowed to set each one:
+  - System-set, nobody sets these via `ft status`: `modified`, `removed`, `restored`
+  - Human-set, the agent must never set these: `ready`, `accepted`, `rejected`
+  - Agent-set: `in-progress`, `fulfilled` — this is as far as the agent's own authority goes; it never sets `accepted` itself, even when confident its own testing is correct
+- A workflow section ties the vocabulary together: never implement a scenario unless it's currently `ready`; mark `in-progress`, implement with a linked test, verify the test passes, mark `fulfilled` and stop. On `rejected`, the agent's involvement ends until a human moves it back to `ready` — directly, or by editing the spec (which `ft sync` turns into `modified` first, still requiring a human to promote it to `ready`). The agent never fixes and re-fulfills a rejected scenario on its own initiative
+- No per-project override mechanism — considered and cut, see design/AGENT_INSTRUCTIONS.md. The intended usage (`ft agent-instructions >> CLAUDE.md`) already gives a human an editable copy without needing `ft` itself to support overrides
+
+**Schema**: none — reads no DB state; the output is a static string.
+
+**Testable**: run `ft agent-instructions` with no `fts/` directory present, verify it succeeds and prints the built-in text. Run `ft init`, verify its output never mentions `agent-instructions`.

@@ -1,0 +1,67 @@
+Feature: Phase 14 ft agent-instructions
+  `ft agent-instructions` prints AI-facing instructions for using `ft` — a
+  command reference and status vocabulary written as behavioral rules for
+  an agent to follow, not documentation for a human to browse. See
+  design/AGENT_INSTRUCTIONS.md.
+
+  The output text lives in cmd/agent_instructions.md and is expected to be
+  edited/refined over time, so these scenarios check for stable concepts
+  (status names, tier structure, key terms) rather than exact wording.
+
+  Background:
+    Given the user has run `ft init`
+
+  @ft:228
+  Scenario: Prints the built-in default prompt
+    When  the user runs `ft agent-instructions`
+    Then  the command exits with status 0
+    And   the output is the built-in default prompt
+
+  @ft:229
+  Scenario: Works without ft init having been run
+    Given the fts/ directory does not exist
+    When  the user runs `ft agent-instructions`
+    Then  the command exits with status 0
+    And   the output is the built-in default prompt
+
+  @ft:230
+  Scenario: Output mentions core concepts
+    When  the user runs `ft agent-instructions`
+    Then  the output mentions "@ft:<id>" and "ft sync"
+    And   the output mentions "fts/ft.db" and "fts/statuses.csv"
+
+  @ft:231
+  Scenario: Output includes a command reference
+    When  the user runs `ft agent-instructions`
+    Then  the output mentions "ft status"
+
+  @ft:232
+  Scenario: Output groups statuses into system-set, human-set, and agent-set tiers
+    When  the user runs `ft agent-instructions`
+    Then  the output mentions "system-set", "human-set", and "agent-set" (case-insensitive)
+    And   the output mentions every status name: "modified", "removed", "restored", "ready", "accepted", "rejected", "in-progress", "fulfilled"
+
+  @ft:233
+  Scenario: Output states the agent must not set human-owned statuses
+    When  the user runs `ft agent-instructions`
+    Then  the output states the agent must not set human-owned statuses itself
+
+  @ft:234
+  Scenario: Output states fulfilled is where the agent stops
+    When  the user runs `ft agent-instructions`
+    Then  the output states that "fulfilled" is where the agent's work stops
+
+  @ft:235
+  Scenario: Output states only ready scenarios should be implemented
+    When  the user runs `ft agent-instructions`
+    Then  the output states that only "ready" scenarios should be implemented
+
+  @ft:236
+  Scenario: Output describes the implementation loop
+    When  the user runs `ft agent-instructions`
+    Then  the output describes moving from "in-progress" to "fulfilled" and stopping there
+
+  @ft:237
+  Scenario: Init output does not mention agent-instructions
+    When  the user runs `ft init`
+    Then  the output does not contain "agent-instructions"

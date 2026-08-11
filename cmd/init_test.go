@@ -163,3 +163,12 @@ func TestInit_StatusesFileNotAddedToGitignore(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "statuses.csv")
 }
+
+// @ft:237
+func TestInit_DoesNotMentionAgentInstructions(t *testing.T) {
+	inTempDir(t)
+
+	out := runInit(t)
+
+	assert.NotContains(t, out, "agent-instructions")
+}
