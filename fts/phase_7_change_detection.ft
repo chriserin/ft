@@ -76,7 +76,7 @@ Feature: Phase 7 Change Detection
     And   the user runs `ft sync`
     Then  a "removed" status is inserted for scenario 1
     And   the output contains "- @ft:1 User logs in"
-    And   the row is appended to fts/statuses.csv (see phase_13_statuses_file.ft)
+    And   the current status is recorded in fts/statuses.csv (see phase_13_statuses_file.ft)
 
   @ft:91
   Scenario: Removed scenario with no history is deleted
@@ -111,7 +111,7 @@ Feature: Phase 7 Change Detection
     Then  the files record for fts/login.ft has deleted = TRUE
     And   the scenarios record for id 1 still exists
     And   a "removed" status is inserted for scenario 1
-    And   the row is appended to fts/statuses.csv (see phase_13_statuses_file.ft)
+    And   the current status is recorded in fts/statuses.csv (see phase_13_statuses_file.ft)
 
   @ft:95
   Scenario: Already-deleted file is skipped on subsequent syncs
@@ -155,7 +155,7 @@ Feature: Phase 7 Change Detection
     Then  the scenario is matched by tag
     And   a "restored" status is inserted for scenario 1
     And   the output contains "+ @ft:1 User logs in"
-    And   the row is appended to fts/statuses.csv (see phase_13_statuses_file.ft)
+    And   the current status is recorded in fts/statuses.csv (see phase_13_statuses_file.ft)
 
   @ft:100
   Scenario: Summary line counts modified files

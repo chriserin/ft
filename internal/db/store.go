@@ -10,6 +10,12 @@ import (
 // round-trip identically to ones written via the column's SQL default.
 const sqliteTimeLayout = "2006-01-02 15:04:05"
 
+// Now returns the current time formatted for use as an explicit changed_at
+// parameter, e.g. via Store.InsertStatusAt.
+func Now() string {
+	return time.Now().UTC().Format(sqliteTimeLayout)
+}
+
 // Store wraps a *sql.DB and exposes the application's data-access operations,
 // keeping raw SQL out of the business logic in cmd.
 type Store struct {
@@ -168,19 +174,19 @@ func (s *Store) HasStatusHistory(scenarioID int64) bool {
 	return err == nil && count > 0
 }
 
-// InsertStatus records a new status for a scenario and appends the same
-// event to the statuses file (see design/STATUSES_FILE.md).
+// InsertStatus records a new status for a scenario and updates its current
+// status in the statuses file (see design/STATUSES_FILE.md).
 func (s *Store) InsertStatus(scenarioID int64, status string) error {
-	changedAt := time.Now().UTC().Format(sqliteTimeLayout)
+	changedAt := Now()
 	if err := s.InsertStatusAt(scenarioID, status, changedAt); err != nil {
 		return err
 	}
-	return appendStatusRow(scenarioID, status, changedAt)
+	return upsertStatusRow(scenarioID, status)
 }
 
 // InsertStatusAt records a status with an explicit changed_at, without
 // touching the statuses file. Used when replaying the statuses file itself
-// during a rebuild, so replay doesn't re-append what it just read.
+// during a rebuild, so replay doesn't rewrite what it just read.
 func (s *Store) InsertStatusAt(scenarioID int64, status, changedAt string) error {
 	_, err := s.db.Exec(`INSERT INTO statuses (scenario_id, status, changed_at) VALUES (?, ?, ?)`, scenarioID, status, changedAt)
 	return err
@@ -193,18 +199,18 @@ func (s *Store) CountStatuses() (int, error) {
 	return count, err
 }
 
-// AllStatusesOrdered returns every status record across all scenarios, in
-// chronological order. Used to backfill the statuses file the first time
-// it's created for a project that already has status history in the DB
-// (e.g. an existing project adopting this feature).
-//
-// changed_at is scanned into time.Time, not string: the sqlite driver
-// normalizes DATETIME columns to RFC3339 when scanning directly into a
-// string, which would produce timestamps in a different format than
-// InsertStatus writes (sqliteTimeLayout). Reformatting explicitly here keeps
-// backfilled rows visually consistent with rows written going forward.
-func (s *Store) AllStatusesOrdered() ([]StatusRow, error) {
-	rows, err := s.db.Query(`SELECT scenario_id, status, changed_at FROM statuses ORDER BY changed_at ASC, id ASC`)
+// AllCurrentStatuses returns each scenario's current (most recently inserted)
+// status, one row per scenario that has ever had a status set. Used to
+// backfill the statuses file the first time it's created for a project that
+// already has status history in the DB (e.g. an existing project adopting
+// this feature).
+func (s *Store) AllCurrentStatuses() ([]StatusRow, error) {
+	rows, err := s.db.Query(`
+		SELECT s.id,
+			(SELECT status FROM statuses WHERE scenario_id = s.id ORDER BY changed_at DESC, id DESC LIMIT 1) AS current_status
+		FROM scenarios s
+		WHERE EXISTS (SELECT 1 FROM statuses WHERE scenario_id = s.id)
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -212,17 +218,11 @@ func (s *Store) AllStatusesOrdered() ([]StatusRow, error) {
 
 	var result []StatusRow
 	for rows.Next() {
-		var scenarioID int64
-		var status string
-		var changedAt time.Time
-		if err := rows.Scan(&scenarioID, &status, &changedAt); err != nil {
+		var r StatusRow
+		if err := rows.Scan(&r.ScenarioID, &r.Status); err != nil {
 			return nil, err
 		}
-		result = append(result, StatusRow{
-			ScenarioID: scenarioID,
-			Status:     status,
-			ChangedAt:  changedAt.UTC().Format(sqliteTimeLayout),
-		})
+		result = append(result, r)
 	}
 	return result, rows.Err()
 }

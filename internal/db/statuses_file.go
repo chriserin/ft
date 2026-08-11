@@ -4,14 +4,15 @@ import (
 	"encoding/csv"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 )
 
 const statusesFileName = "statuses.csv"
 
-var statusesHeader = []string{"id", "status", "changed_at"}
+var statusesHeader = []string{"id", "status"}
 
-// StatusesPath returns the project-relative path to the statuses log file.
+// StatusesPath returns the project-relative path to the statuses file.
 func StatusesPath() string {
 	return filepath.Join(DataDir, statusesFileName)
 }
@@ -28,29 +29,17 @@ func EnsureStatusesFile() error {
 	if StatusesFileExists() {
 		return nil
 	}
-
-	f, err := os.Create(StatusesPath())
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-	if err := w.Write(statusesHeader); err != nil {
-		return err
-	}
-	w.Flush()
-	return w.Error()
+	return WriteStatusesFile(nil)
 }
 
-// StatusRow is a single parsed entry from the statuses file.
+// StatusRow is a scenario's id and its current status, as recorded in the
+// statuses file — a snapshot, not a history of every transition.
 type StatusRow struct {
 	ScenarioID int64
 	Status     string
-	ChangedAt  string
 }
 
-// ReadStatusesFile parses every entry in the statuses file, in file order.
+// ReadStatusesFile parses every row in the statuses file, sorted by id.
 // It returns no rows (and no error) if the file doesn't exist.
 func ReadStatusesFile() ([]StatusRow, error) {
 	f, err := os.Open(StatusesPath())
@@ -72,58 +61,75 @@ func ReadStatusesFile() ([]StatusRow, error) {
 
 	var rows []StatusRow
 	for _, rec := range records[1:] { // skip header
-		if len(rec) != 3 {
+		if len(rec) != 2 {
 			continue
 		}
 		id, err := strconv.ParseInt(rec[0], 10, 64)
 		if err != nil {
 			continue
 		}
-		rows = append(rows, StatusRow{ScenarioID: id, Status: rec[1], ChangedAt: rec[2]})
+		rows = append(rows, StatusRow{ScenarioID: id, Status: rec[1]})
 	}
 	return rows, nil
 }
 
 // WriteStatusesFile overwrites the statuses file with the given rows,
-// preceded by the header row. Used to backfill the file from the DB the
-// first time it's created for a project that already has status history.
+// preceded by the header row, sorted by id. Used both to create an empty
+// file and to backfill it from the DB's current statuses.
 func WriteStatusesFile(rows []StatusRow) error {
-	f, err := os.Create(StatusesPath())
+	sorted := make([]StatusRow, len(rows))
+	copy(sorted, rows)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ScenarioID < sorted[j].ScenarioID })
+
+	tmpPath := StatusesPath() + ".tmp"
+	f, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
 	w := csv.NewWriter(f)
 	if err := w.Write(statusesHeader); err != nil {
+		f.Close()
 		return err
 	}
-	for _, r := range rows {
-		if err := w.Write([]string{strconv.FormatInt(r.ScenarioID, 10), r.Status, r.ChangedAt}); err != nil {
+	for _, r := range sorted {
+		if err := w.Write([]string{strconv.FormatInt(r.ScenarioID, 10), r.Status}); err != nil {
+			f.Close()
 			return err
 		}
 	}
 	w.Flush()
-	return w.Error()
-}
-
-// appendStatusRow appends a single status event to the statuses file,
-// creating it with a header first if it doesn't already exist.
-func appendStatusRow(id int64, status, changedAt string) error {
-	if err := EnsureStatusesFile(); err != nil {
+	if err := w.Error(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
 		return err
 	}
 
-	f, err := os.OpenFile(StatusesPath(), os.O_APPEND|os.O_WRONLY, 0o644)
+	return os.Rename(tmpPath, StatusesPath())
+}
+
+// upsertStatusRow updates the given scenario's row in the statuses file, or
+// inserts a new one in sorted position if it doesn't have one yet. Creates
+// the file first if it doesn't exist.
+func upsertStatusRow(id int64, status string) error {
+	rows, err := ReadStatusesFile()
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
-	w := csv.NewWriter(f)
-	if err := w.Write([]string{strconv.FormatInt(id, 10), status, changedAt}); err != nil {
-		return err
+	found := false
+	for i, r := range rows {
+		if r.ScenarioID == id {
+			rows[i].Status = status
+			found = true
+			break
+		}
 	}
-	w.Flush()
-	return w.Error()
+	if !found {
+		rows = append(rows, StatusRow{ScenarioID: id, Status: status})
+	}
+
+	return WriteStatusesFile(rows)
 }

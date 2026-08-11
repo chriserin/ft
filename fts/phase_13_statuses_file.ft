@@ -1,11 +1,12 @@
 Feature: Phase 13 Statuses File
-  `fts/ft.db` is gitignored, so status history is lost on a fresh clone.
-  `fts/statuses.csv` is a git-tracked, append-only CSV log of every status
-  change. `ft init` creates it, `Store.InsertStatus` appends to it, and
-  `ft sync` (not `ft init`) reconstructs the database from `.ft` files plus
-  this file whenever it finds `fts/ft.db` missing — the same code path that
-  handles ordinary reconciliation, since `OpenProjectStore` already creates
-  and migrates a fresh DB file transparently if one doesn't exist.
+  `fts/ft.db` is gitignored, so a scenario's status is lost on a fresh clone.
+  `fts/statuses.csv` is a git-tracked snapshot of each scenario's *current*
+  status only, not a full history log. `ft init` creates it, `Store.InsertStatus`
+  upserts into it, and `ft sync` (not `ft init`) reconstructs the database
+  from `.ft` files plus this file whenever it finds `fts/ft.db` missing — the
+  same code path that handles ordinary reconciliation, since
+  `OpenProjectStore` already creates and migrates a fresh DB file
+  transparently if one doesn't exist. Full status history remains DB-only.
 
   Background:
     Given the user has run `ft init`
@@ -15,11 +16,11 @@ Feature: Phase 13 Statuses File
     Given fts/statuses.csv does not exist
     When  the user runs `ft init`
     Then  fts/statuses.csv is created
-    And   the file contains the header row "id,status,changed_at"
+    And   the file contains the header row "id,status"
 
   @ft:202
   Scenario: Init leaves an existing statuses file alone
-    Given fts/statuses.csv already exists with status history
+    Given fts/statuses.csv already exists with status entries
     When  the user runs `ft init`
     Then  fts/statuses.csv is unchanged
 
@@ -30,35 +31,34 @@ Feature: Phase 13 Statuses File
     Then  fts/statuses.csv is not listed in .gitignore
 
   @ft:204
-  Scenario: Setting a status appends a row to the statuses file
+  Scenario: Setting a status upserts the scenario's row in the statuses file
     Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
     When  the user runs `ft status 1 accepted`
-    Then  fts/statuses.csv gains a row with id 1, status "accepted"
-    And   the row's changed_at matches the changed_at recorded in the statuses table
+    Then  fts/statuses.csv has a row with id 1, status "accepted"
 
   @ft:205
-  Scenario: Sync's automatic modified status is appended to the statuses file
+  Scenario: Sync's automatic modified status updates the statuses file
     Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
     And   scenario 1 has status "accepted"
     When  the user changes the steps of scenario 1 in fts/login.ft
     And   the user runs `ft sync`
-    Then  fts/statuses.csv gains a row with id 1, status "modified"
+    Then  fts/statuses.csv has a row with id 1, status "modified"
 
   @ft:206
-  Scenario: Sync's automatic removed status is appended to the statuses file
+  Scenario: Sync's automatic removed status updates the statuses file
     Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
     And   the user has set scenario 1 to "accepted"
     When  the user removes the scenario from fts/login.ft
     And   the user runs `ft sync`
-    Then  fts/statuses.csv gains a row with id 1, status "removed"
+    Then  fts/statuses.csv has a row with id 1, status "removed"
 
   @ft:207
-  Scenario: Sync's automatic restored status is appended to the statuses file
+  Scenario: Sync's automatic restored status updates the statuses file
     Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
     And   scenario 1 has been removed
     When  the user re-adds the scenario with its original @ft:1 tag
     And   the user runs `ft sync`
-    Then  fts/statuses.csv gains a row with id 1, status "restored"
+    Then  fts/statuses.csv has a row with id 1, status "restored"
 
   @ft:208
   Scenario: New file with an unclaimed tag keeps the tagged id
@@ -86,31 +86,32 @@ Feature: Phase 13 Statuses File
     And   the scenarios record for id 1 is recreated with name "User logs in"
 
   @ft:211
-  Scenario: Sync replays status history from the statuses file after a rebuild
+  Scenario: Sync restores current status from the statuses file after a rebuild
     Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
     And   the user has set scenario 1 to "accepted"
     And   the user has set scenario 1 to "in-progress"
     And   fts/ft.db is deleted
     When  the user runs `ft sync`
-    Then  scenario 1 has two status records
-    And   the most recent status is "in-progress"
-    And   the changed_at timestamps match the original values from fts/statuses.csv
+    Then  scenario 1 has exactly one status record
+    And   that status is "in-progress"
+    And   fts/statuses.csv is not modified by the rebuild
 
   @ft:215
-  Scenario: Sync backfills the statuses file from pre-existing DB history
-    Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
-    And   scenario 1 has a status of "accepted" recorded only in the database
-    And   fts/statuses.csv has no rows for scenario 1
+  Scenario: Sync backfills DB-only status into the statuses file even when the file already has other rows
+    Given fts/login.ft has been synced with scenarios "User logs in" and "User fails login"
+    And   the user has set scenario 2 to "in-progress"
+    And   scenario 1 has a current status of "accepted" recorded only in the database
+    And   fts/statuses.csv already contains a row for scenario 2 but not scenario 1
     When  the user runs `ft sync`
     Then  fts/statuses.csv gains a row with id 1, status "accepted"
-    And   the row's changed_at matches the changed_at recorded in the statuses table
+    And   fts/statuses.csv still has the row for scenario 2
 
   @ft:214
-  Scenario: Sync does not replay status history when the statuses table is not empty
+  Scenario: Sync does not replay the statuses file into an already-populated database
     Given fts/login.ft has been synced with Scenario "User logs in" as @ft:1
     And   the user has set scenario 1 to "accepted"
     When  the user runs `ft sync`
-    Then  no additional status records are inserted for scenario 1
+    Then  no additional status records are inserted into the statuses table for scenario 1
 
   @ft:212
   Scenario: Rebuild skips status history with no matching scenario

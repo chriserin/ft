@@ -46,8 +46,8 @@ func TestStatus_SetScenarioStatus(t *testing.T) {
 	statusesData, err := os.ReadFile("fts/statuses.csv")
 	require.NoError(t, err)
 	content := string(statusesData)
-	assert.Contains(t, content, "id,status,changed_at")
-	assert.Contains(t, content, "1,accepted,")
+	assert.Contains(t, content, "id,status")
+	assert.Contains(t, content, "1,accepted")
 }
 
 // @ft:58

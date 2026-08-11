@@ -841,10 +841,10 @@ func TestSync_RemovedScenarioWithHistoryGetsRemovedStatus(t *testing.T) {
 	assert.Contains(t, out, "-")
 	assert.Contains(t, out, "User logs in")
 
-	// @ft:206: the removed status should be appended to the statuses file
+	// @ft:206: the removed status should be recorded in the statuses file
 	statusesData, err := os.ReadFile("fts/statuses.csv")
 	require.NoError(t, err)
-	assert.Contains(t, string(statusesData), "1,removed,")
+	assert.Contains(t, string(statusesData), "1,removed")
 }
 
 // @ft:91
@@ -940,7 +940,7 @@ func TestSync_DeletedFileWithHistoryPreservesScenario(t *testing.T) {
 
 	statusesData, err := os.ReadFile("fts/statuses.csv")
 	require.NoError(t, err)
-	assert.Contains(t, string(statusesData), "1,removed,")
+	assert.Contains(t, string(statusesData), "1,removed")
 }
 
 // @ft:95
@@ -1201,7 +1201,7 @@ func TestSync_RemovedScenarioReferencedByTagIsRestored(t *testing.T) {
 
 	statusesData, err := os.ReadFile("fts/statuses.csv")
 	require.NoError(t, err)
-	assert.Contains(t, string(statusesData), "1,restored,")
+	assert.Contains(t, string(statusesData), "1,restored")
 }
 
 // @ft:155
@@ -1229,7 +1229,7 @@ func TestSync_ContentChangeInsertsModifiedStatus(t *testing.T) {
 
 	statusesData, err := os.ReadFile("fts/statuses.csv")
 	require.NoError(t, err)
-	assert.Contains(t, string(statusesData), "1,modified,")
+	assert.Contains(t, string(statusesData), "1,modified")
 }
 
 // @ft:156
@@ -1659,7 +1659,7 @@ func TestSync_RebuildRecreatesScenariosAfterDBDeleted(t *testing.T) {
 }
 
 // @ft:211
-func TestSync_RebuildReplaysStatusHistory(t *testing.T) {
+func TestSync_RebuildRestoresCurrentStatus(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
@@ -1672,47 +1672,61 @@ func TestSync_RebuildReplaysStatusHistory(t *testing.T) {
 
 	statusesBefore, err := os.ReadFile("fts/statuses.csv")
 	require.NoError(t, err)
+	require.Contains(t, string(statusesBefore), "1,in-progress")
 
 	require.NoError(t, os.Remove("fts/ft.db"))
 
 	runSync(t)
 
 	fx := dbtest.Open(t, "fts/ft.db")
-	assert.Equal(t, 2, fx.CountStatuses(1))
-	assert.Equal(t, "in-progress", fx.LatestStatusByChangedAt(1))
+	// Only the current status is restored — full transition history isn't,
+	// since the file only ever records current status, not a full log.
+	assert.Equal(t, 1, fx.CountStatuses(1))
+	assert.Equal(t, "in-progress", fx.LatestStatusByID(1))
 
-	// Replay must not re-append to the file it just read from
+	// Replay must not rewrite the file it just read from
 	statusesAfter, err := os.ReadFile("fts/statuses.csv")
 	require.NoError(t, err)
 	assert.Equal(t, string(statusesBefore), string(statusesAfter))
 }
 
 // @ft:215
-func TestSync_BackfillsStatusesFileFromExistingDBHistory(t *testing.T) {
+func TestSync_BackfillsStatusesFileFromExistingDBHistoryEvenWhenFileIsNotEmpty(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
   Scenario: User logs in
     Given a user
+
+  Scenario: User fails login
+    Given a user
 `), 0o644))
 	runSync(t)
 
-	// Simulate pre-existing history that predates the statuses file,
-	// inserted directly into the DB, bypassing Store.InsertStatus.
+	// Scenario 2 gets a normal, file-tracked status.
+	runStatusUpdate(t, "2", "in-progress")
+
+	// Scenario 1 gets pre-existing history that predates the statuses file —
+	// inserted directly into the DB, bypassing Store.InsertStatus. The file
+	// is NOT empty at this point (it already has scenario 2's row), which is
+	// what previously prevented backfill from ever reaching scenario 1: the
+	// old gate only fired when the whole file was empty, but in real usage
+	// the file almost always already has something in it.
 	setupFx := dbtest.Open(t, "fts/ft.db")
 	setupFx.InsertStatus(1, "accepted")
 	setupFx.Close()
 
-	// statuses.csv still only has its header — nothing has appended to it
 	before, err := os.ReadFile("fts/statuses.csv")
 	require.NoError(t, err)
-	require.Equal(t, "id,status,changed_at\n", string(before))
+	require.Contains(t, string(before), "2,in-progress")
+	require.NotContains(t, string(before), "1,accepted")
 
 	runSync(t)
 
 	data, err := os.ReadFile("fts/statuses.csv")
 	require.NoError(t, err)
-	assert.Contains(t, string(data), "1,accepted,")
+	assert.Contains(t, string(data), "1,accepted")
+	assert.Contains(t, string(data), "2,in-progress")
 }
 
 // @ft:212
@@ -1772,7 +1786,7 @@ func TestLogin(t *testing.T) {}
 }
 
 // @ft:214
-func TestSync_DoesNotReplayWhenStatusesTableNotEmpty(t *testing.T) {
+func TestSync_DoesNotReplayFileIntoNonEmptyDatabase(t *testing.T) {
 	inTempDir(t)
 	runInit(t)
 	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
@@ -1786,7 +1800,11 @@ func TestSync_DoesNotReplayWhenStatusesTableNotEmpty(t *testing.T) {
 	before := fx.CountStatuses(1)
 	fx.Close()
 
-	runSync(t) // ordinary sync — fts/ft.db was not deleted
+	// Ordinary sync — fts/ft.db was never deleted, so the file→DB replay
+	// direction must not fire just because the file has rows; only the
+	// DB→file direction should run (keeping the file in sync), and it must
+	// not touch the statuses table at all.
+	runSync(t)
 
 	fx2 := dbtest.Open(t, "fts/ft.db")
 	assert.Equal(t, before, fx2.CountStatuses(1))

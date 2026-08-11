@@ -13,7 +13,7 @@ Feature: Phase 6 ft status
     Given fts/login.ft has been synced with Scenario "User logs in"
     When  the user runs `ft status 1 accepted`
     Then  a new status record is inserted for scenario 1 with status "accepted"
-    And   the row is appended to fts/statuses.csv (see phase_13_statuses_file.ft)
+    And   the current status is recorded in fts/statuses.csv (see phase_13_statuses_file.ft)
 
   @ft:58
   Scenario: Status accepts @ft: prefix

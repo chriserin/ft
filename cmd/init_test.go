@@ -132,7 +132,7 @@ func TestInit_CreatesStatusesFile(t *testing.T) {
 
 	data, err := os.ReadFile(filepath.Join(dir, "fts", "statuses.csv"))
 	require.NoError(t, err)
-	assert.Equal(t, "id,status,changed_at\n", string(data))
+	assert.Equal(t, "id,status\n", string(data))
 	assert.Contains(t, out, "fts/statuses.csv created")
 }
 
@@ -142,13 +142,13 @@ func TestInit_StatusesFileAlreadyExists(t *testing.T) {
 	runInit(t)
 
 	statusesPath := filepath.Join(dir, "fts", "statuses.csv")
-	require.NoError(t, os.WriteFile(statusesPath, []byte("id,status,changed_at\n1,accepted,2026-01-01 00:00:00\n"), 0o644))
+	require.NoError(t, os.WriteFile(statusesPath, []byte("id,status\n1,accepted\n"), 0o644))
 
 	out := runInit(t)
 
 	data, err := os.ReadFile(statusesPath)
 	require.NoError(t, err)
-	assert.Equal(t, "id,status,changed_at\n1,accepted,2026-01-01 00:00:00\n", string(data))
+	assert.Equal(t, "id,status\n1,accepted\n", string(data))
 	assert.Contains(t, out, "fts/statuses.csv already exists")
 }
 

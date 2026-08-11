@@ -509,52 +509,56 @@ func scanTestLinksInFile(path string, src []byte) []testLink {
 }
 
 // reconcileStatusesFile keeps fts/statuses.csv and the statuses table in
-// sync in both directions, but only for the one-time "these two have never
-// met" cases — ordinary operation always writes both together via
-// Store.InsertStatus, so neither direction ever fires once a project is
-// caught up.
+// sync in both directions, but the two directions are not symmetric:
 //
-//   - DB empty, file has rows: fts/ft.db was deleted and recreated (a
-//     rebuild). Replay the file into the table. Entries whose scenario id has
-//     no matching row (removed from its file before the DB was lost) are
-//     skipped rather than reconstructed — see design/STATUSES_FILE.md.
-//   - DB has rows, file is empty: an existing project is adopting this
-//     feature for the first time — its history predates statuses.csv.
-//     Backfill the file from the table instead.
-//
-// A brand-new project has both empty, so this is a no-op on an ordinary
-// first sync too.
+//   - DB → file: runs on *every* sync, unconditionally. The file is fully
+//     rewritten from each scenario's current status in the DB, so it's
+//     always an accurate snapshot — this is what backfills status history
+//     that predates statuses.csv (an existing project adopting this
+//     feature), and also what catches any other drift between the two.
+//     Gating this on "only if the file is empty" was the bug: in practice
+//     the file usually already has *some* rows from ordinary `ft status`
+//     use, so a narrower condition would silently skip backfilling
+//     everything else. If nothing changed, the rewrite produces identical
+//     bytes, so this doesn't create diff noise.
+//   - File → DB: only runs when the DB has *no* status history at all —
+//     the signal that fts/ft.db was deleted and recreated (a rebuild), not
+//     merely "the file happens to have data the DB doesn't." Replaying into
+//     an already-populated DB would risk inserting duplicate or conflicting
+//     history, so this direction stays a one-time, empty-DB-only operation.
+//     It restores each scenario's current status using the rebuild's own
+//     timestamp — the file only ever records current status, not the
+//     original transition time. Rows whose scenario id has no matching row
+//     (removed from its file before the DB was lost) are skipped rather
+//     than reconstructed — see design/STATUSES_FILE.md.
 func reconcileStatusesFile(store *db.Store) error {
 	dbCount, err := store.CountStatuses()
 	if err != nil {
 		return err
 	}
 
-	fileRows, err := db.ReadStatusesFile()
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case dbCount == 0 && len(fileRows) > 0:
+	if dbCount == 0 {
+		fileRows, err := db.ReadStatusesFile()
+		if err != nil {
+			return err
+		}
+		changedAt := db.Now()
 		for _, row := range fileRows {
 			if !store.ScenarioExists(row.ScenarioID) {
 				continue
 			}
-			if err := store.InsertStatusAt(row.ScenarioID, row.Status, row.ChangedAt); err != nil {
+			if err := store.InsertStatusAt(row.ScenarioID, row.Status, changedAt); err != nil {
 				return err
 			}
 		}
-	case dbCount > 0 && len(fileRows) == 0:
-		allRows, err := store.AllStatusesOrdered()
-		if err != nil {
-			return err
-		}
-		if err := db.WriteStatusesFile(allRows); err != nil {
-			return err
-		}
+		return nil
 	}
-	return nil
+
+	currentRows, err := store.AllCurrentStatuses()
+	if err != nil {
+		return err
+	}
+	return db.WriteStatusesFile(currentRows)
 }
 
 func syncTestLinks(store *db.Store) error {
