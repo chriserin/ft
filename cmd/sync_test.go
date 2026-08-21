@@ -1355,6 +1355,136 @@ func TestSync_ContentChangeWhileAlreadyModifiedDoesNotDuplicate(t *testing.T) {
 	assert.Equal(t, 1, fx.CountStatusesByStatus(1, "modified"))
 }
 
+func TestSync_ReindentAndKeywordPaddingDoesNotMarkModified(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+
+  Scenario: User logs in
+    Given a user
+    When they submit credentials
+    Then they are logged in
+
+  Scenario: User logs out
+    Given a logged in user
+    When they log out
+    Then they are logged out
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+	runStatusUpdate(t, "2", "accepted")
+
+	// Simulate a formatter reindenting every line (spaces -> tabs) and
+	// widening step-keyword padding across the whole file, as
+	// ../ts/lua/gherkin_formatter.lua does on every format run.
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	reformatted := strings.ReplaceAll(string(data), "    Given ", "\tGiven  ")
+	reformatted = strings.ReplaceAll(reformatted, "    When ", "\tWhen   ")
+	reformatted = strings.ReplaceAll(reformatted, "    Then ", "\tThen   ")
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(reformatted), 0o644))
+
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "accepted", fx.LatestStatusByID(1))
+	assert.Equal(t, "accepted", fx.LatestStatusByID(2))
+}
+
+func TestSync_ReformatPlusRealEditOnlyMarksEditedScenarioModified(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+
+  Scenario: User logs in
+    Given a user
+    When they submit credentials
+    Then they are logged in
+
+  Scenario: User logs out
+    Given a logged in user
+    When they log out
+    Then they are logged out
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+	runStatusUpdate(t, "2", "accepted")
+
+	// Reindent the whole file (formatter-style) AND make a real edit to
+	// only the second scenario's step text.
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	reformatted := strings.ReplaceAll(string(data), "    Given ", "\tGiven ")
+	reformatted = strings.ReplaceAll(reformatted, "    When ", "\tWhen ")
+	reformatted = strings.ReplaceAll(reformatted, "    Then ", "\tThen ")
+	reformatted = strings.Replace(reformatted, "they log out", "they sign out", 1)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(reformatted), 0o644))
+
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "accepted", fx.LatestStatusByID(1))
+	assert.Equal(t, "modified", fx.LatestStatusByID(2))
+}
+
+func TestSync_DocStringReindentDoesNotMarkModified(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+
+  Scenario: User submits payload
+    Given the following payload
+      """
+      foo: 1
+      bar:   2
+      """
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Reindent the whole doc string block (base indent shifts), preserving
+	// relative alignment between its lines.
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	reformatted := strings.ReplaceAll(string(data), "      \"\"\"", "        \"\"\"")
+	reformatted = strings.ReplaceAll(reformatted, "      foo: 1", "        foo: 1")
+	reformatted = strings.ReplaceAll(reformatted, "      bar:   2", "        bar:   2")
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(reformatted), 0o644))
+
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "accepted", fx.LatestStatusByID(1))
+}
+
+func TestSync_DocStringInternalAlignmentChangeIsModified(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+
+  Scenario: User submits payload
+    Given the following payload
+      """
+      foo:   1
+      bar:   2
+      """
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Change alignment *within* the doc string block itself — this is a
+	// real, meaningful change and should still be flagged as modified.
+	data, err := os.ReadFile("fts/login.ft")
+	require.NoError(t, err)
+	updated := strings.Replace(string(data), "foo:   1", "foo: 1", 1)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(updated), 0o644))
+
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "modified", fx.LatestStatusByID(1))
+}
+
 // @ft:159
 func TestSync_RestoredScenarioDoesNotGetModifiedStatus(t *testing.T) {
 	inTempDir(t)

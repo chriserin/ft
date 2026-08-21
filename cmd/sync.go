@@ -47,7 +47,69 @@ func stepsOf(content string) string {
 	if !found {
 		return ""
 	}
-	return after
+	return normalizeSteps(after)
+}
+
+var docStringDelimRe = regexp.MustCompile("^(\"\"\"|```)")
+
+// normalizeSteps neutralizes whitespace-only differences introduced by
+// reformatting (reindentation, step-keyword padding, table column
+// alignment) so that only real text edits register as a content change.
+// Lines inside a doc string (delimited by """ or ```) are left alone
+// except for a shared leading indent stripped from the whole block, since
+// relative alignment inside a doc string can be meaningful.
+func normalizeSteps(content string) string {
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines))
+
+	var docBlock []string
+	flushDocBlock := func() {
+		if len(docBlock) == 0 {
+			return
+		}
+		minIndent := -1
+		for _, l := range docBlock {
+			if strings.TrimSpace(l) == "" {
+				continue
+			}
+			n := len(l) - len(strings.TrimLeft(l, " \t"))
+			if minIndent == -1 || n < minIndent {
+				minIndent = n
+			}
+		}
+		if minIndent == -1 {
+			minIndent = 0
+		}
+		for _, l := range docBlock {
+			if len(l) >= minIndent {
+				out = append(out, l[minIndent:])
+			} else {
+				out = append(out, strings.TrimLeft(l, " \t"))
+			}
+		}
+		docBlock = nil
+	}
+
+	inDocString := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if docStringDelimRe.MatchString(trimmed) {
+			if inDocString {
+				flushDocBlock()
+			}
+			out = append(out, trimmed)
+			inDocString = !inDocString
+			continue
+		}
+		if inDocString {
+			docBlock = append(docBlock, line)
+			continue
+		}
+		out = append(out, strings.Join(strings.Fields(line), " "))
+	}
+	flushDocBlock()
+
+	return strings.Join(out, "\n")
 }
 
 // insertOrAdoptScenario inserts a scenario belonging to a file not yet
