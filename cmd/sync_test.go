@@ -777,6 +777,53 @@ func TestSync_UnknownTagFallsBackToNameMatch(t *testing.T) {
 	assert.Equal(t, 1, fx.CountScenarios())
 }
 
+func TestSync_UnknownTagNameMatchWithUnchangedContentKeepsStatus(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Replace tag with unknown @ft:999, same name, same steps
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  @ft:999
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "accepted", fx.LatestStatusByID(1))
+}
+
+func TestSync_UnknownTagNameMatchWithRealContentChangeGetsModified(t *testing.T) {
+	inTempDir(t)
+	runInit(t)
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  Scenario: User logs in
+    Given a user
+`), 0o644))
+	runSync(t)
+	runStatusUpdate(t, "1", "accepted")
+
+	// Replace tag with unknown @ft:999 (routes through name-match fallback)
+	// AND make a real edit to the step text at the same time. The fallback
+	// branch must still detect this as a content change, the same as the
+	// tag-matched branch does.
+	require.NoError(t, os.WriteFile("fts/login.ft", []byte(`Feature: Login
+  @ft:999
+  Scenario: User logs in
+    Given an admin
+`), 0o644))
+	runSync(t)
+
+	fx := dbtest.Open(t, "fts/ft.db")
+	assert.Equal(t, "modified", fx.LatestStatusByID(1))
+}
+
 // @ft:89
 func TestSync_UnknownTagNoNameMatchIsNew(t *testing.T) {
 	inTempDir(t)

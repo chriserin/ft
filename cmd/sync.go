@@ -129,8 +129,18 @@ func reconcileTrackedFile(store *db.Store, fileID int64, pf *parser.ParsedFile) 
 					// Matched by name
 					delete(remaining, dbID)
 					nameMatched = true
+
+					contentChanged := dbS.Content.Valid && stepsOf(dbS.Content.String) != stepsOf(ps.Content)
+
 					store.UpdateScenarioNameContent(dbID, ps.Name, ps.Content)
 					insertions = append(insertions, tagInsertion{line: ps.Line, id: dbID})
+
+					if contentChanged {
+						latestStatus, _ := store.LatestInsertedStatus(dbID)
+						if store.HasStatusHistory(dbID) && latestStatus != "modified" {
+							store.InsertStatus(dbID, "modified")
+						}
+					}
 					actions = append(actions, scenarioAction{kind: "modified", id: dbID, name: ps.Name})
 					break
 				}
